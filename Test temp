@@ -1,0 +1,11 @@
+awk '
+/^[0-9]{2}-[A-Z]{3}-[0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2}/ {
+    # Capture the timestamp
+    timestamp = $0
+}
+
+/Elapsed:/ {
+    # Capture and print the elapsed time with the corresponding timestamp
+    print timestamp " ——— " $0
+}
+' your_log_file.log
