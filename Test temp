@@ -29,3 +29,30 @@ WITH Partition_Data AS (
 SELECT * 
 FROM Partition_Data
 WHERE PARTITION_DATE = TO_DATE('2024-12-13', 'YYYY-MM-DD');
+
+
+SET SERVEROUTPUT ON
+DECLARE
+    v_joindate VARCHAR2(4000); -- Variable to hold the converted LONG value
+    v_today    DATE := SYSDATE; -- Today's date
+BEGIN
+    FOR rec IN (
+        SELECT EMPID, TO_LOB(JOINDATE) AS JOINDATE_RAW
+        FROM EMPLOYEES
+    ) LOOP
+        BEGIN
+            -- Attempt to convert the LONG value to a date dynamically
+            EXECUTE IMMEDIATE 'SELECT ' || rec.JOINDATE_RAW || ' FROM DUAL' INTO v_joindate;
+            
+            -- Compare with today's date
+            IF TO_DATE(v_joindate, 'YYYY-MM-DD') = TRUNC(v_today) THEN
+                DBMS_OUTPUT.PUT_LINE('EmpID: ' || rec.EMPID || ' joined today.');
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                DBMS_OUTPUT.PUT_LINE('Error processing JOINDATE for EmpID: ' || rec.EMPID);
+        END;
+    END LOOP;
+END;
+/
+
