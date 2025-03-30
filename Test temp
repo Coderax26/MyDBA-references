@@ -186,3 +186,72 @@ GROUP BY
 ORDER BY 
     i.INST_ID,
     u.TABLESPACE_NAME;
+
+
+
+
+
+
+
+------------
+For Oracle databases, you can use the following queries to identify which processes are consuming high CPU:
+
+1. **Check current active sessions with CPU usage**:
+```sql
+SELECT s.sid, s.serial#, s.username, s.osuser, 
+       s.program, sq.sql_id, sq.sql_text,
+       st.value/100 as CPU_SECONDS
+FROM v$session s
+JOIN v$sesstat st ON s.sid = st.sid
+JOIN v$statname sn ON st.statistic# = sn.statistic#
+LEFT JOIN v$sql sq ON s.sql_id = sq.sql_id
+WHERE sn.name = 'CPU used by this session'
+AND st.value > 0
+ORDER BY st.value DESC;
+```
+
+2. **Identify top SQL statements by CPU usage**:
+```sql
+SELECT sql_id, sql_text, 
+       cpu_time/1000000 as CPU_SECONDS, 
+       elapsed_time/1000000 as ELAPSED_SECONDS,
+       executions, 
+       cpu_time/NULLIF(executions,0)/1000000 as CPU_SECONDS_PER_EXEC
+FROM v$sql
+ORDER BY cpu_time DESC
+FETCH FIRST 20 ROWS ONLY;
+```
+
+3. **Check for resource-intensive operations**:
+```sql
+SELECT sid, serial#, username, opname, target, 
+       sofar, totalwork, 
+       ROUND(sofar/totalwork*100, 2) as "% Complete",
+       elapsed_seconds, time_remaining
+FROM v$session_longops
+WHERE sofar < totalwork
+ORDER BY elapsed_seconds DESC;
+```
+
+4. **Monitor OS process information**:
+```sql
+SELECT p.spid as OS_PID, s.sid, s.serial#, s.username, 
+       s.status, s.last_call_et as SECONDS_IN_CURRENT_STATE,
+       s.sql_id, s.event, s.wait_class
+FROM v$process p
+JOIN v$session s ON p.addr = s.paddr
+WHERE s.type = 'USER'
+ORDER BY s.last_call_et DESC;
+```
+
+Once you identify problematic sessions, you can get more details on a specific SQL statement:
+```sql
+SELECT * FROM v$sql WHERE sql_id = 'your_sql_id_here';
+```
+
+Or terminate a problematic session if necessary:
+```sql
+ALTER SYSTEM KILL SESSION 'sid,serial#' IMMEDIATE;
+```
+
+Would you like more specific information on interpreting these results or additional queries for deeper diagnosis?​​​​​​​​​​​​​​​​
