@@ -1,0 +1,92 @@
+Oracle doesn’t provide a direct command to “backup and restore” a redaction policy, but you can manually export the policy definition as SQL, and later recreate it using PL/SQL. Here’s how to do it safely and effectively:
+
+⸻
+
+✅ Step 1: Backup redaction policy (generate SQL script)
+
+You can manually extract policy definitions using this query:
+
+SELECT 'BEGIN DBMS_REDACT.ADD_POLICY(' ||
+       'object_schema => ''' || object_schema || ''', ' ||
+       'object_name => ''' || object_name || ''', ' ||
+       'policy_name => ''' || policy_name || ''', ' ||
+       'column_name => ''' || column_name || ''', ' ||
+       'function_type => ''' || function_type || ''', ' ||
+       'expression => ''' || NVL(expression, '') || ''', ' ||
+       'policy_description => ''' || NVL(policy_description, '') || '''); END; /'
+AS create_policy_script
+FROM   dba_redaction_columns
+WHERE  object_name = 'YOUR_TABLE_NAME'
+AND    object_schema = 'YOUR_SCHEMA_NAME';
+
+This will give you a script that looks like:
+
+BEGIN 
+  DBMS_REDACT.ADD_POLICY(
+    object_schema => 'HR',
+    object_name => 'CUSTOMERS',
+    policy_name => 'REDACT_SSN',
+    column_name => 'SSN',
+    function_type => 'FULL',
+    expression => '1=1',
+    policy_description => 'Redact SSN data');
+END;
+/
+
+🔁 You should store this output in a .sql file as a backup.
+
+⸻
+
+🧪 Optional: Backup multiple policies (if more than one column or condition)
+
+Run this for more detailed backup including options:
+
+SELECT *
+FROM   dba_redaction_policies
+WHERE  object_name = 'YOUR_TABLE_NAME'
+AND    object_owner = 'YOUR_SCHEMA_NAME';
+
+SELECT *
+FROM   dba_redaction_columns
+WHERE  object_name = 'YOUR_TABLE_NAME'
+AND    object_owner = 'YOUR_SCHEMA_NAME';
+
+
+⸻
+
+🔁 Step 2: Restore redaction policy
+
+Just run the backup SQL file or re-execute the DBMS_REDACT.ADD_POLICY block(s).
+
+⸻
+
+🛡️ Tip: Export to a file using SQL*Plus
+
+If you’re using SQL*Plus or SQLcl:
+
+SPOOL backup_redaction_policy.sql
+
+-- Run the backup SQL query above
+
+SPOOL OFF
+
+This will save the output into backup_redaction_policy.sql.
+
+⸻
+
+🧼 Optional: Clean existing policies before restoring
+
+If you’re restoring, you might want to drop any existing conflicting policies first:
+
+BEGIN
+  DBMS_REDACT.DROP_POLICY(
+    object_schema => 'HR',
+    object_name => 'CUSTOMERS',
+    policy_name => 'REDACT_SSN');
+END;
+/
+
+
+⸻
+
+If you’d like, share your table name and schema (and optionally sample redacted columns), and I can generate the exact backup script for you.
