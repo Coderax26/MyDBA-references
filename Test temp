@@ -255,3 +255,32 @@ ALTER SYSTEM KILL SESSION 'sid,serial#' IMMEDIATE;
 ```
 
 Would you like more specific information on interpreting these results or additional queries for deeper diagnosis?​​​​​​​​​​​​​​​​
+
+
+
+
+
+======••====
+SELECT
+    o.owner,
+    o.object_name AS table_name,
+    COUNT(DISTINCT s.sql_id) AS sql_count,
+    SUM(ss.executions_delta) AS total_executions
+FROM
+    dba_hist_sqlstat ss
+JOIN
+    dba_hist_sqltext s ON ss.sql_id = s.sql_id
+JOIN
+    dba_objects o ON s.sql_text LIKE '%' || o.object_name || '%'
+WHERE
+    o.owner IN ('SBINRT82', 'SBINRTFO', 'SBIARUSER', 'SBINRTCINB')
+    AND o.object_name IN (
+        'PRM_REF_DATA_LISTS',
+        'DE_RECORD_SOURCE_ATTR',
+        'AR_UI_VIEW_ELEMENT',
+        'AR_UI_ELEMENT_CONFIG'
+    )
+GROUP BY
+    o.owner, o.object_name
+ORDER BY
+    total_executions DESC;
