@@ -1,0 +1,50 @@
+#!/bin/bash
+# RAC Network Troubleshooting Script
+# Run this on the node where ping fails before rebooting
+
+LOG=/tmp/rac_netcheck_$(date +%F_%H%M%S).log
+OTHER_NODE_IP=$1   # pass the other node’s IP as argument
+
+echo "=== RAC Network Troubleshooting ===" | tee -a $LOG
+echo "Other node IP: $OTHER_NODE_IP" | tee -a $LOG
+echo "Log file: $LOG" | tee -a $LOG
+echo | tee -a $LOG
+
+# 1. Basic IP configuration
+echo ">>> Checking IP addresses" | tee -a $LOG
+ip addr show | tee -a $LOG
+echo | tee -a $LOG
+
+# 2. Routing table
+echo ">>> Checking routing table" | tee -a $LOG
+ip route show | tee -a $LOG
+echo | tee -a $LOG
+
+# 3. ARP table entry for peer node
+if [ -n "$OTHER_NODE_IP" ]; then
+  echo ">>> Checking ARP entry for $OTHER_NODE_IP" | tee -a $LOG
+  arp -n | grep "$OTHER_NODE_IP" | tee -a $LOG
+  echo | tee -a $LOG
+fi
+
+# 4. Ping test
+if [ -n "$OTHER_NODE_IP" ]; then
+  echo ">>> Pinging $OTHER_NODE_IP" | tee -a $LOG
+  ping -c 4 "$OTHER_NODE_IP" | tee -a $LOG
+  echo | tee -a $LOG
+fi
+
+# 5. CRS/GI status
+echo ">>> Checking CRS status" | tee -a $LOG
+ps -ef | grep ocssd.bin | grep -v grep && echo "CRS running" || echo "CRS not running" | tee -a $LOG
+echo | tee -a $LOG
+
+# 6. Suggest quick fixes
+echo ">>> Possible Quick Fixes (try one by one)" | tee -a $LOG
+echo "1) Flush ARP: ip neigh flush all" | tee -a $LOG
+echo "2) Bounce NIC: ip link set <iface> down; ip link set <iface> up" | tee -a $LOG
+echo "3) Restart network: systemctl restart network" | tee -a $LOG
+echo "4) Restart Grid Infra: crsctl stop crs -f ; crsctl start crs" | tee -a $LOG
+echo | tee -a $LOG
+
+echo "=== End of Check ===" | tee -a $LOG
