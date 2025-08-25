@@ -1,1 +1,54 @@
 
+Perfect, I’ll prepare the same structured sheet for the commands from your screenshot. I won’t repeat the ones already covered earlier. Here’s the new RAC Precheck Sheet (continuation):
+
+⸻
+
+✅ RAC Precheck Sheet (DBA Side – Continuation)
+
+Sr	Description	Command
+41	Check running Oracle grid background processes	`ps -ef
+42	Check running ASM instance processes	`ps -ef
+43	Check running TNS listener processes	`ps -ef
+44	Validate cluster health across all nodes	crsctl check cluster -all
+45	Verify CRS daemon status	crsctl check crs
+46	Verify cluster synchronization service	crsctl check css
+47	Display CRS resource status in tabular format	crsctl stat res -t
+48	Display voting disk configuration	crsctl query css votedisk
+49	Check active CRS version	crsctl query crs activeversion
+50	Check detailed active CRS version with node info	crsctl query crs activeversion -f
+51	Display CRS release version	crsctl query crs releaseversion
+52	Display CRS software version per node	crsctl query crs softwareversion
+53	List all applied patches in current ORACLE_HOME	opatch lspatches
+54	Display patch inventory in ORACLE_HOME	opatch lsinventory
+55	List applied one-off patches	`opatch lsinv
+56	Display patches in sorted order	`opatch lspatches
+57	Check SQL*Net configuration file	cat sqlnet.ora
+58	Check listener configuration file	cat listener.ora
+59	Verify registered TNS entries	cat tnsnames.ora
+60	Display SCAN listener configuration	srvctl config scan
+61	Display SCAN listener endpoints	srvctl config scan_listener
+62	Verify SCAN1 listener configuration	srvctl config LISTENER_SCAN1
+63	Verify SCAN2 listener configuration	srvctl config LISTENER_SCAN2
+64	Verify SCAN3 listener configuration	srvctl config LISTENER_SCAN3
+65	Verify ASM listener configuration	srvctl config ASMNET1LSNR_ASM
+66	Display status of SCAN listeners	srvctl status scan
+67	Display status of database listener	srvctl status LISTENER
+68	Display status of SCAN1 listener	srvctl status LISTENER_SCAN1
+69	Display status of SCAN2 listener	srvctl status LISTENER_SCAN2
+70	Display status of SCAN3 listener	srvctl status LISTENER_SCAN3
+71	Display status of ASM listener	srvctl status ASMNET1LSNR_ASM
+72	Display listener status using lsnrctl	lsnrctl status LISTENER
+73	Check SCAN1 listener status with lsnrctl	lsnrctl status LISTENER_SCAN1
+74	Check SCAN2 listener status with lsnrctl	lsnrctl status LISTENER_SCAN2
+75	Check SCAN3 listener status with lsnrctl	lsnrctl status LISTENER_SCAN3
+76	Check ASM listener status with lsnrctl	lsnrctl status ASMNET1LSNR_ASM
+77	Verify cluster name across nodes	cemutlo -n
+78	Display kernel module for RAC (kfod) utilities	kfod op=patches
+79	Display patch information at cluster level	kfod op=patchlvl
+
+
+⸻
+
+👉 This extends your earlier precheck sheet with all the CRS, OPatch, Listener, and SCAN-related checks. Descriptions are short, technical, and precise so it looks like a professional DBA checklist.
+
+Do you also want me to combine both sheets (earlier + this one) into a single Excel file so that you’ll have a complete RAC precheck sheet in one place?
