@@ -29,7 +29,7 @@ Sr	Description	Command
 61	Display SCAN listener endpoints	srvctl config scan_listener
 62	Verify SCAN1 listener configuration	srvctl config LISTENER_SCAN1
 63	Verify SCAN2 listener configuration	srvctl config LISTENER_SCAN2
-64	Verify SCAN3 listener configuration	srvctl config LISTENER_SCAN3
+
 65	Verify ASM listener configuration	srvctl config ASMNET1LSNR_ASM
 66	Display status of SCAN listeners	srvctl status scan
 67	Display status of database listener	srvctl status LISTENER
@@ -51,4 +51,59 @@ Sr	Description	Command
 
 👉 This extends your earlier precheck sheet with all the CRS, OPatch, Listener, and SCAN-related checks. Descriptions are short, technical, and precise so it looks like a professional DBA checklist.
 
-Do you also want me to combine both sheets (earlier + this one) into a single Excel file so that you’ll have a complete RAC precheck sheet in one place?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Perfect 👌 I see your second screenshot. This one is focused on database-level prechecks (SQL queries, RMAN checks, ASM, Golden Image backup, etc.). Let’s rewrite these into a professional table with informative descriptions, just like we did for the OS side.
+
+⸻
+
+Database Prechecks (DBA Side)
+
+Sr	Description	Command
+1	Verify database instances running on the server.	`ps -ef
+2	Verify database names from Oracle password file.	cat $ORACLE_HOME/dbs/orapw<SID>
+3	Generate SQL*Plus spool file for database environment details.	create pfile='/home/oracle/init<SID>_$(date +%d%m%Y)' from spfile;
+4	Generate memory parameter file from current spfile.	create pfile='/home/oracle/init<SID>_$(date +%d%m%Y)' from memory;
+5	Verify instance and database details including DB name, host, version, open mode, log mode, and database role.	SQL query against v$instance and v$database
+6	Verify archive log configuration and status by thread.	select * from v$archived_log;
+7	Verify SGA and PGA parameters including memory allocations.	select name,value from v$parameter where name in ('sga_max_size','sga_target','shared_pool_size','pga_aggregate_target','pga_aggregate_limit');
+8	Verify datafile and tablespace details including size and auto-extend status.	select FILE_ID,TABLESPACE_NAME,FILE_NAME,BYTES/1024/1024/1024 GB,AUTOEXTENSIBLE from dba_data_files;
+9	Verify redo log groups, members, and sizes.	select * from v$log;
+10	Verify redo log members’ file details.	select * from v$logfile;
+11	Verify standby redo log configuration.	select GROUP#,THREAD#,BYTES,STATUS from v$standby_log;
+12	Verify control file information including file name and size.	select * from v$controlfile;
+13	Verify database properties such as creation time and database name.	select FILE#,CREATION_TIME,TS#,NAME,BYTES/1024/1024/1024 GB from v$tablespace;
+14	Verify invalid database objects for cleanup before upgrade/migration.	select owner,object_name,object_type,status from dba_objects where status='INVALID';
+15	Verify important database initialization parameters.	show parameter spfile;
+16	Verify RMAN backup configuration.	RMAN> show all;
+17	Verify database spfile and parameter backup.	RMAN> backup spfile;
+18	Verify database control file backup.	RMAN> backup current controlfile;
+19	Verify database archivelog backup.	RMAN> backup archivelog all;
+20	Perform Gold Image backup for cloning or reference build.	Custom RMAN / OS backup procedure
+21	Backup Oracle Wallet folder (if TDE is used).	cp -r $ORACLE_BASE/admin/<DB_UNIQUE_NAME>/wallet <backup_location>
+22	Backup Oracle Inventory before database reinstall or migration.	tar -cvf oraInventory_bkp.tar /u01/app/oraInventory
+23	Backup critical scripts and configuration files (oratab, init files, ASM configs, etc.).	cp /etc/oratab /backup_location + scripts
+
+
+⸻
+
+✅ Now you have:
+	•	OS Prechecks Table (from before)
+	•	DB Prechecks Table (this one)
+
+Together, these give a comprehensive precheck package before formatting the server for your RAC setup.
+
+👉 Do you want me to combine OS + DB prechecks into a single Excel sheet (two tabs) in the polished format so you can directly share with your senior officials?
+
