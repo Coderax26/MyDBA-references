@@ -1,2 +1,251 @@
+lsnrctl start LISTENER_MIIB-BKL
+lsnrctl start LISTENER_SBISI-BKL
+lsnrctl start LISTENER_SBISI
+lsnrctl start LISTENER_REPO-BKL
+---------------------------------------
+cd $GRID_HOME/OPatch
+./opatch util listorderedinactivepatches
+./opatch util deleteinactivepatches
 
-abc
+cd $ORACLE_HOME
+./opatch util listorderedinactivepatches
+./opatch util deleteinactivepatches
+----------------------------------------
+For GRID_HOME   ORACLE_HOME=/u01/app/19.0.0.0/grid  ----- 19C GRID
+---------------
+export ORACLE_HOME=/u01/app/19.3.0/grid
+export PATH=/u01/app/19.3.0/grid/bin:$PATH
+export PATH=/u01/app/19.3.0/grid/OPatch:$PATH
+
+nohup $ORACLE_HOME/OPatch/opatch prereq CheckConflictAgainstOHWithDetail -phBaseDir /u01/DBPATCH2025/Database/19.27.0.0.0/19.27.0.0.250415GIRU/37641958/37654975 &
+nohup $ORACLE_HOME/OPatch/opatch prereq CheckConflictAgainstOHWithDetail -phBaseDir /u01/DBPATCH2025/Database/19.27.0.0.0/19.27.0.0.250415GIRU/37641958/37643161 &
+nohup $ORACLE_HOME/OPatch/opatch prereq CheckConflictAgainstOHWithDetail -phBaseDir /u01/DBPATCH2025/Database/19.27.0.0.0/19.27.0.0.250415GIRU/37641958/37762426 &
+nohup $ORACLE_HOME/OPatch/opatch prereq CheckConflictAgainstOHWithDetail -phBaseDir /u01/DBPATCH2025/Database/19.27.0.0.0/19.27.0.0.250415GIRU/37641958/36758186 &
+nohup $ORACLE_HOME/OPatch/opatch prereq CheckConflictAgainstOHWithDetail -phBaseDir /u01/DBPATCH2025/Database/19.27.0.0.0/19.27.0.0.250415GIRU/37641958/37642901 &
+
+nohup /u01/app/19.3.0/grid/crs/install/rootcrs.sh -prepatch &
+
+nohup /u01/app/19.3.0/grid/OPatch/opatch apply -oh /u01/app/19.3.0/grid -silent -local /u01/DBPATCH2025/Database/19.27.0.0.0/19.27.0.0.250415GIRU/37641958/37654975 & --
+nohup /u01/app/19.3.0/grid/OPatch/opatch apply -oh /u01/app/19.3.0/grid -silent -local /u01/DBPATCH2025/Database/19.27.0.0.0/19.27.0.0.250415GIRU/37641958/37643161 & --
+nohup /u01/app/19.3.0/grid/OPatch/opatch apply -oh /u01/app/19.3.0/grid -silent -local /u01/DBPATCH2025/Database/19.27.0.0.0/19.27.0.0.250415GIRU/37641958/37762426 & --
+nohup /u01/app/19.3.0/grid/OPatch/opatch apply -oh /u01/app/19.3.0/grid -silent -local /u01/DBPATCH2025/Database/19.27.0.0.0/19.27.0.0.250415GIRU/37641958/36758186 & --
+nohup /u01/app/19.3.0/grid/OPatch/opatch apply -oh /u01/app/19.3.0/grid -silent -local /u01/DBPATCH2025/Database/19.27.0.0.0/19.27.0.0.250415GIRU/37641958/37642901 & --
+---------------
+For RDBMS_HOME ----- 19C DB HOME
+---------------
+export ORACLE_HOME=/u01/app/oracle19c/product/19.3.0/dbhome_1
+export PATH=/u01/app/oracle19c/product/19.3.0/dbhome_1/bin:$PATH
+export PATH=/u01/app/oracle19c/product/19.3.0/dbhome_1/OPatch:$PATH
+     
+nohup $ORACLE_HOME/OPatch/opatch prereq CheckConflictAgainstOHWithDetail -phBaseDir /u01/DBPATCH2025/Database/19.27.0.0.0/19.27.0.0.250415GIRU/37641958/37642901 &
+nohup $ORACLE_HOME/OPatch/opatch prereq CheckConflictAgainstOHWithDetail -phBaseDir /u01/DBPATCH2025/Database/19.27.0.0.0/19.27.0.0.250415GIRU/37641958/37654975 &
+
+nohup $ORACLE_HOME/OPatch/opatch prereq CheckConflictAgainstOHWithDetail -phBaseDir /u01/DBPATCH2025/Database/19.27.0.0.0/19.27.0.0.250415OJVMRU/37499406 &  - OJVM
+-----
+nohup /u01/app/oracle19c/product/19.3.0/dbhome_1/OPatch/opatch apply -oh /u01/app/oracle19c/product/19.3.0/dbhome_1 -silent -local /u01/OCT-QFSDP-2024/Database/19.25.0.0.0/19.25.0.0.241015GIRU/36916690/36912597 & --
+nohup /u01/app/oracle19c/product/19.3.0/dbhome_1/OPatch/opatch apply -oh /u01/app/oracle19c/product/19.3.0/dbhome_1 -silent -local /u01/OCT-QFSDP-2024/Database/19.25.0.0.0/19.25.0.0.241015GIRU/36916690/36917416 & --
+nohup /u01/app/oracle19c/product/19.3.0/dbhome_1/OPatch/opatch apply -oh /u01/app/oracle19c/product/19.3.0/dbhome_1 -silent -local /u01/OCT-QFSDP-2024/Database/19.25.0.0.0/19.25.0.0.241015OJVMRU/36878697 & --
+--
+nohup /u01/app/19.3.0/grid/crs/install/rootcrs.sh -postpatch &
+-------------------------------------------------------------
+/u01/app/grid19c/crsdata/exdrdbadm08/crsconfig/crs_prepatch_apply_inplace_exdrdbadm08_2024-12-18_11-50-30PM.log
+/u01/app/grid19c/crsdata/exdrdbadm08/crsconfig/crs_postpatch_apply_inplace_exdrdbadm08_2024-12-19_01-55-01AM.log
+grid:
+/u01/app/19.3.0/grid/cfgtoollogs/opatch/opatch2024-12-18_23-58-24PM_1.log
+/u01/app/19.3.0/grid/cfgtoollogs/opatch/opatch2024-12-19_00-14-00AM_1.log
+/u01/app/19.3.0/grid/cfgtoollogs/opatch/opatch2024-12-19_00-39-07AM_1.log
+/u01/app/19.3.0/grid/cfgtoollogs/opatch/opatch2024-12-19_00-47-15AM_1.log
+/u01/app/19.3.0/grid/cfgtoollogs/opatch/opatch2024-12-19_00-53-25AM_1.log
+********
+oracle:
+/u01/app/oracle19c/product/19.3.0/dbhome_1/cfgtoollogs/opatch/opatch2024-12-19_01-08-05AM_1.log
+/u01/app/oracle19c/product/19.3.0/dbhome_1/cfgtoollogs/opatch/opatch2024-12-19_01-23-05AM_1.log
+/u01/app/oracle19c/product/19.3.0/dbhome_1/cfgtoollogs/opatch/opatch2024-12-19_01-37-45AM_1.log
+
+***************************************************************************************
+sudo su - grid
+
+cat /etc/oratab
+hostname
+hostname -i
+
+cd $ORACLE_HOME/bin
+ls -la oracle
+
+cd $ORACLE_HOME/OPatch
+./opatch version
+./opatch lspatches
+./opatch lsinventory | grep applied
+./opatch lsinventory | grep description
+lsnrctl status
+
+ps -ef | grep pmon
+ps -ef | grep d.bin
+ps -ef | grep tns
+srvctl status ASM
+srvctl status LISTENER
+srvctl config database
+srvctl config database -d test
+srvctl status database -d test -v
+srvctl status instance -d test -i test1
+srvctl status instance -d test -i test2
+
+cd /grid19c/app/19.0.0.0/grid/bin
+crsctl stat res -t
+crsctl check crs
+crsctl check cluster -all
+crsctl query crs releaseversion
+crsctl query crs softwareversion
+crsctl query crs releasepatch
+
+exit
+
+2) Install the new opatch
+=========================
+sudo su - root
+$ORACLE_HOME/OPatch/opatch version
+cd $ORACLE_HOME
+mv OPatch OPatchv39_29feb2024
+cp p6880880_122102_SOLARIS64.zip $ORACLE_HOME/
+unzip p6880880_122102_SOLARIS64.zip
+chmod -R 777 OPatch
+chown -R grid:oinstall OPatch
+$ORACLE_HOME/OPatch/opatch version
+
+3) Unzip the patch
+==================
+sudo su - grid
+cd /oracle19c/Patch_Jan2024/FOR_GRID
+unzip p35940989_122010_Linux-x86-64.zip
+chown -R grid:oinstall 35940989
+chmod -R 777 35940989
+
+4) Shutdown CRS
+===============
+sudo su - oracle
+sqlplus / as sysdba
+alter system switch all logfile;                                        (for DC)    
+alter system checkpoint global;                                   (for DC)
+alter database recover managed standby database cancel;           (for DR)
+crontab -l
+#comment monitpring script
+
+sudo su - root
+cd /grid19c/app/19.0.0.0/grid/bin
+### srvctl stop instance -d test -i test1
+./crsctl check crs
+./crsctl stop crs
+./crsctl check crs
+---
+ps -ef|grep d.bin
+ps -ef|grep pmon
+ps -ef|grep tns
+----------------------------------------------------------------------------------------------------------
+[root@exdrdbadm08 ~]# ps -ef | grep d.bin
+root       9307   2750  0 23:21 pts/1    00:00:00 grep --color=auto d.bin
+oracle   107268      1  0 Dec13 ?        00:00:49 /u01/app/19.3.0/grid/bin/tnslsnr LISTENER_SCAN2 -no_crs_notify -inherit
+root     228744      1  0 Dec12 ?        00:42:58 /u01/app/19.3.0/grid/bin/ohasd.bin reboot _ORA_BLOCKING_STACK_LOCALE=AMERICAN_AMERICA.US7ASCII
+root     228884      1  0 Dec12 ?        00:29:49 /u01/app/19.3.0/grid/bin/orarootagent.bin
+oracle   229023      1  0 Dec12 ?        00:39:29 /u01/app/19.3.0/grid/bin/oraagent.bin
+oracle   229047      1  0 Dec12 ?        00:11:54 /u01/app/19.3.0/grid/bin/mdnsd.bin
+oracle   229049      1  0 Dec12 ?        00:33:53 /u01/app/19.3.0/grid/bin/evmd.bin
+oracle   229087      1  0 Dec12 ?        00:13:37 /u01/app/19.3.0/grid/bin/gpnpd.bin
+oracle   229142 229049  0 Dec12 ?        00:12:39 /u01/app/19.3.0/grid/bin/evmlogger.bin -o /u01/app/19.3.0/grid/log/[HOSTNAME]/evmd/evmlogger.info -l /u01/app/19.3.0/grid/log/[HOSTNAME]/evmd/evmlogger.log
+oracle   229168      1  0 Dec12 ?        00:47:40 /u01/app/19.3.0/grid/bin/gipcd.bin
+root     229253      1  0 Dec12 ?        00:15:35 /u01/app/19.3.0/grid/bin/cssdmonitor
+root     229255      1  6 Dec12 ?        09:41:57 /u01/app/19.3.0/grid/bin/osysmond.bin
+root     229295      1  0 Dec12 ?        00:16:32 /u01/app/19.3.0/grid/bin/cssdagent
+oracle   229306      1  0 Dec12 ?        01:10:43 /u01/app/19.3.0/grid/bin/diskmon -d -f
+oracle   229339      1  1 Dec12 ?        02:40:53 /u01/app/19.3.0/grid/bin/ocssd.bin
+root     230492      1  0 Dec12 ?        00:45:18 /u01/app/19.3.0/grid/bin/octssd.bin reboot
+root     235052      1  0 Dec12 ?        00:42:44 /u01/app/19.3.0/grid/bin/crsd.bin reboot
+oracle   235427      1  0 Dec12 ?        01:16:57 /u01/app/19.3.0/grid/bin/oraagent.bin
+root     235441      1  0 Dec12 ?        01:20:36 /u01/app/19.3.0/grid/bin/orarootagent.bin
+oracle   235746      1  0 Dec12 ?        00:00:40 /u01/app/19.3.0/grid/bin/tnslsnr LISTENER -no_crs_notify -inherit
+oracle   235859      1  0 Dec12 ?        00:05:17 /u01/app/19.3.0/grid/bin/tnslsnr ASMNET1LSNR_ASM -no_crs_notify -inherit
+[root@exdrdbadm08 ~]# ps -ef | grep tns
+root        322      2  0 Dec12 ?        00:00:00 [netns]
+root      11761   2750  0 23:21 pts/1    00:00:00 grep --color=auto tns
+oracle   107268      1  0 Dec13 ?        00:00:49 /u01/app/19.3.0/grid/bin/tnslsnr LISTENER_SCAN2 -no_crs_notify -inherit
+oracle   235746      1  0 Dec12 ?        00:00:40 /u01/app/19.3.0/grid/bin/tnslsnr LISTENER -no_crs_notify -inherit
+oracle   235859      1  0 Dec12 ?        00:05:17 /u01/app/19.3.0/grid/bin/tnslsnr ASMNET1LSNR_ASM -no_crs_notify -inherit
+[root@exdrdbadm08 ~]# ps -ef | grep pmon
+root      11973   2750  0 23:21 pts/1    00:00:00 grep --color=auto pmon
+oracle   234019      1  0 Dec12 ?        00:00:52 asm_pmon_+ASM8
+oracle   313000      1  0 Dec12 ?        00:02:54 ora_pmon_ATMSMS4
+[root@exdrdbadm08 ~]#
+*************************************************************************
+post patch:
+[root@exdrdbadm08 ~]# ps -ef | grep d.bin
+root     339772      1  4 01:56 ?        00:00:06 /u01/app/19.3.0/grid/bin/ohasd.bin reboot _ORA_BLOCKING_STACK_LOCALE=AMERICAN_AMERICA.AL32UTF8
+root     340238      1  1 01:56 ?        00:00:01 /u01/app/19.3.0/grid/bin/orarootagent.bin
+oracle   340415      1  0 01:56 ?        00:00:00 /u01/app/19.3.0/grid/bin/oraagent.bin
+oracle   340524      1  0 01:56 ?        00:00:00 /u01/app/19.3.0/grid/bin/mdnsd.bin
+oracle   340526      1  0 01:56 ?        00:00:01 /u01/app/19.3.0/grid/bin/evmd.bin
+oracle   341156      1  0 01:56 ?        00:00:00 /u01/app/19.3.0/grid/bin/gpnpd.bin
+oracle   341282 340526  0 01:56 ?        00:00:00 /u01/app/19.3.0/grid/bin/evmlogger.bin -o /u01/app/19.3.0/grid/log/[HOSTNAME]/evmd/evmlogger.info -l /u01/app/19.3.0/grid/log/[HOSTNAME]/evmd/evmlogger.log
+oracle   341346      1  0 01:56 ?        00:00:01 /u01/app/19.3.0/grid/bin/gipcd.bin
+root     341638      1  0 01:56 ?        00:00:00 /u01/app/19.3.0/grid/bin/cssdmonitor
+root     341640      1  5 01:56 ?        00:00:07 /u01/app/19.3.0/grid/bin/osysmond.bin
+root     341698      1  0 01:56 ?        00:00:00 /u01/app/19.3.0/grid/bin/cssdagent
+oracle   341706      1  0 01:56 ?        00:00:01 /u01/app/19.3.0/grid/bin/diskmon -d -f
+oracle   341814      1  4 01:56 ?        00:00:05 /u01/app/19.3.0/grid/bin/ocssd.bin
+root     343249      1  0 01:56 ?        00:00:00 /u01/app/19.3.0/grid/bin/octssd.bin reboot
+root     347886      1  4 01:57 ?        00:00:03 /u01/app/19.3.0/grid/bin/crsd.bin reboot
+oracle   348026      1  2 01:57 ?        00:00:02 /u01/app/19.3.0/grid/bin/oraagent.bin
+root     348036      1  1 01:57 ?        00:00:00 /u01/app/19.3.0/grid/bin/orarootagent.bin
+oracle   348735      1  0 01:57 ?        00:00:00 /u01/app/19.3.0/grid/bin/tnslsnr LISTENER -no_crs_notify -inherit
+oracle   349404      1  0 01:57 ?        00:00:00 /u01/app/19.3.0/grid/bin/tnslsnr ASMNET1LSNR_ASM -no_crs_notify -inherit
+root     359897   2750  0 01:58 pts/1    00:00:00 grep --color=auto d.bin
+[root@exdrdbadm08 ~]#
+[root@exdrdbadm08 ~]#
+[root@exdrdbadm08 ~]# ps -ef | grep pmon
+oracle   346300      1  0 01:57 ?        00:00:00 asm_pmon_+ASM8
+oracle   350093      1  0 01:57 ?        00:00:00 ora_pmon_ATMSMS4
+root     361203  10580  0 01:58 ?        00:00:00 sh -c /u01/imperva/ragent/bin/db-discovery.sh -d Oracle -f /u01/imperva/ragent/bin/ -r "tnslsnr" -i "_pmon_" -e "false" -s "oracle+ASM[A-Za-z0-9]{0,}|asm_d[000-999]|ora_d[000-999]" -a "true" -p 9999 -o /u01/imperva/ragent/var/db_discovery_oracle.txt -ipc 2>>/u01/imperva/ragent/var/stderr_db_discovery.txt
+root     361205 361203  1 01:58 ?        00:00:00 /bin/bash /u01/imperva/ragent/bin/db-discovery.sh -d Oracle -f /u01/imperva/ragent/bin/ -r tnslsnr -i _pmon_ -e false -s oracle+ASM[A-Za-z0-9]{0,}|asm_d[000-999]|ora_d[000-999] -a true -p 9999 -o /u01/imperva/ragent/var/db_discovery_oracle.txt -ipc
+root     361703   2750  0 01:58 pts/1    00:00:00 grep --color=auto pmon
+root     361794 361205  0 01:58 ?        00:00:00 /bin/bash /u01/imperva/ragent/bin/db-discovery.sh -d Oracle -f /u01/imperva/ragent/bin/ -r tnslsnr -i _pmon_ -e false -s oracle+ASM[A-Za-z0-9]{0,}|asm_d[000-999]|ora_d[000-999] -a true -p 9999 -o /u01/imperva/ragent/var/db_discovery_oracle.txt -ipc
+[root@exdrdbadm08 ~]# ps -ef | grep tns
+root        322      2  0 Dec12 ?        00:00:00 [netns]
+oracle   348735      1  0 01:57 ?        00:00:00 /u01/app/19.3.0/grid/bin/tnslsnr LISTENER -no_crs_notify -inherit
+oracle   349404      1  0 01:57 ?        00:00:00 /u01/app/19.3.0/grid/bin/tnslsnr ASMNET1LSNR_ASM -no_crs_notify -inherit
+root     364481   2750  0 01:58 pts/1    00:00:00 grep --color=auto tns
+[root@exdrdbadm08 ~]#
+
+
+Dear Team,
+
+
+
+Thanks for contacting ORACLE ACS team. Kindly raise SD ticket using Helix tool. For More information refer below Note:
+
+
+
+
+
+
+
+
+
+
+Thanks & Regards,
+
+
+
+Oracle CSS
+
+
+
+
+
+
+*********************************************************************************************************************************
+Note:
+kindly raise service request in HELIX for Oracle ACS related issues/queries.
+Please find the below link for manual for raising service request in HELIX.
+Helix URL:https://helix-smartit.itsam.sbi/smartit/app/#/ticket-console
+*********************************************************************************************************************************
+
+
+
