@@ -1,0 +1,20 @@
+DECLARE
+  v_limit   NUMBER := 100000;
+  v_count   NUMBER := 0;
+BEGIN
+  LOOP
+    UPDATE your_table
+    SET    column1 = 'NewValue'
+    WHERE  your_condition
+    AND    ROWNUM <= v_limit;
+
+    v_count := SQL%ROWCOUNT;
+
+    COMMIT;
+
+    DBMS_OUTPUT.PUT_LINE('Committed ' || v_count || ' rows');
+
+    EXIT WHEN v_count < v_limit;
+  END LOOP;
+END;
+/
