@@ -1,0 +1,16 @@
+Step 1: Find the iframe with sandbox=" ... allow same origin allow-script"
+Step 2: select iframe and go to console
+
+var innerDoc = $0.contentDocument || $0.contentWindow.document;
+
+innerDoc.querySelectorAll("video")
+
+>>>NodeList [video#videoPlayer]
+
+var v = innerDoc.querySelector("video");
+
+
+v.playbackRate = 2.0;
+
+v.playbackRate = 16.0
+
