@@ -88,3 +88,162 @@ LEFT JOIN sql_texts bt ON bt.sql_id = bs.sql_id
 LEFT JOIN v$locked_object lo ON lo.session_id = wm.blocker_sid OR lo.session_id = wm.wait_sid
 LEFT JOIN dba_objects o ON o.object_id = lo.object_id
 ORDER BY wm.wait_sid;
+
+
+Okay — let’s fix this. If the combined query returned nothing, there are only a few likely causes and I’ll give you immediate checks and a more robust single query to run as a privileged user that should always show any waiting/blocking activity plus helpful context.
+
+Possible reasons you saw no output
+	•	There were no waiting sessions at the moment you ran it. Waiters are transient.
+	•	You ran it with a non-privileged user that cannot see v$ performance views (run as SYS or a user with appropriate SELECT privileges).
+	•	Your SET parameters in SQL*Plus truncated the SQL text (use SET LONG 200000).
+	•	The blocking session is on another instance (if RAC) so local views may not show it.
+	•	v$locked_object has no rows for TX locks — TX locks show in v$lock not v$locked_object.
+
+Run these quick checks first (copy/paste)
+	1.	Confirm you can see locks and sessions (must be privileged)
+
+-- simple existence checks
+SELECT COUNT(*) FROM v$lock;
+SELECT COUNT(*) FROM v$session WHERE username IS NOT NULL;
+
+If either returns ORA-00942 or permission error, run as SYS or grant proper rights.
+	2.	Show all current locks (compact)
+
+SELECT sid, type, id1, id2, lmode, request, block
+FROM v$lock
+ORDER BY block DESC, request DESC;
+
+This shows low level lock rows. Look for rows with request>0 (waiters) or block=1 (blockers).
+	3.	If you see waiters in step 2, run this robust single query (run as SYS; set long and pagesize in SQL*Plus)
+
+SET LONG 200000
+SET PAGESIZE 200
+SET LINESIZE 200
+
+WITH wait_locks AS (
+  SELECT l.sid wait_sid, l.type wait_lock_type, l.id1, l.id2, l.request
+  FROM v$lock l
+  WHERE l.request > 0
+),
+block_locks AS (
+  SELECT l.sid block_sid, l.type block_lock_type, l.id1, l.id2, l.lmode
+  FROM v$lock l
+  WHERE l.block = 1
+),
+wait_block_map AS (
+  SELECT w.wait_sid,
+         COALESCE(s.blocking_session, b.block_sid) AS blocker_sid,
+         w.wait_lock_type, b.block_lock_type,
+         w.id1, w.id2, w.request
+  FROM wait_locks w
+  LEFT JOIN v$session s ON s.sid = w.wait_sid
+  LEFT JOIN block_locks b
+    ON b.id1 = w.id1 AND b.id2 = w.id2 AND b.block_sid != w.wait_sid
+)
+SELECT
+  wm.wait_sid,
+  ws.serial#        AS wait_serial,
+  ws.username       AS wait_user,
+  ws.osuser         AS wait_osuser,
+  ws.machine        AS wait_machine,
+  ws.program        AS wait_program,
+  ws.status         AS wait_status,
+  ws.sql_id         AS wait_sql_id,
+  wt.sql_text       AS wait_sql_text,
+  ws.event          AS wait_event,
+  ws.seconds_in_wait,
+  wm.blocker_sid,
+  bs.serial#        AS block_serial,
+  bs.username       AS block_user,
+  bs.osuser         AS block_osuser,
+  bs.machine        AS block_machine,
+  bs.program        AS block_program,
+  bs.status         AS block_status,
+  bs.sql_id         AS block_sql_id,
+  bt.sql_text       AS block_sql_text,
+  o.owner           AS locked_owner,
+  o.object_name     AS locked_object,
+  o.object_type     AS locked_obj_type,
+  wm.wait_lock_type,
+  wm.block_lock_type,
+  wm.request
+FROM wait_block_map wm
+LEFT JOIN v$session ws ON ws.sid = wm.wait_sid
+LEFT JOIN v$session bs ON bs.sid = wm.blocker_sid
+LEFT JOIN v$sql wt ON wt.sql_id = ws.sql_id
+LEFT JOIN v$sql bt ON bt.sql_id = bs.sql_id
+LEFT JOIN v$locked_object lo ON lo.session_id IN (wm.wait_sid, wm.blocker_sid)
+LEFT JOIN dba_objects o ON o.object_id = lo.object_id
+ORDER BY ws.seconds_in_wait DESC;
+
+What to expect from that query
+	•	If it returns rows: you will see wait and blocker SIDs, SQL text and the locked object (if present). Use the wait_sid, wait_serial and blocker_sid, block_serial to take action.
+	•	If it returns zero rows but v$lock from step 2 shows lock rows, the blocker may be on another RAC node. In RAC, run the same query on the instance that owns the blocking session or query GV$ views (gv$lock, gv$session, gv$locked_object) to see cluster-wide locks.
+
+If output still empty or intermittent: capture automatically at 00:15
+Use a capture job that inserts a snapshot into a table at 00:15. This ensures you catch the transient state.
+
+Create capture table and job:
+
+CREATE TABLE lock_capture (
+  capture_time    TIMESTAMP,
+  wait_sid        NUMBER,
+  wait_serial     NUMBER,
+  wait_user       VARCHAR2(64),
+  wait_program    VARCHAR2(200),
+  wait_sql_id     VARCHAR2(13),
+  wait_sql_text   CLOB,
+  wait_event      VARCHAR2(200),
+  seconds_in_wait NUMBER,
+  blocker_sid     NUMBER,
+  block_serial    NUMBER,
+  block_user      VARCHAR2(64),
+  block_program   VARCHAR2(200),
+  block_sql_id    VARCHAR2(13),
+  block_sql_text  CLOB,
+  locked_owner    VARCHAR2(64),
+  locked_object   VARCHAR2(128),
+  locked_obj_type VARCHAR2(64)
+);
+
+-- scheduler job that runs at 00:15 daily
+BEGIN
+  DBMS_SCHEDULER.create_job (
+    job_name        => 'DAILY_LOCK_CAPTURE_0015',
+    job_type        => 'PLSQL_BLOCK',
+    job_action      => q'[
+      BEGIN
+        INSERT INTO lock_capture
+        SELECT SYSTIMESTAMP,
+               ws.sid, ws.serial#, ws.username, ws.program, ws.sql_id,
+               wt.sql_text, ws.event, ws.seconds_in_wait,
+               bs.sid, bs.serial#, bs.username, bs.program, bs.sql_id,
+               bt.sql_text,
+               o.owner, o.object_name, o.object_type
+        FROM v$lock lw
+        JOIN v$session ws ON lw.sid = ws.sid
+        LEFT JOIN v$session bs ON bs.sid = ws.blocking_session
+        LEFT JOIN v$sql wt ON wt.sql_id = ws.sql_id
+        LEFT JOIN v$sql bt ON bt.sql_id = bs.sql_id
+        LEFT JOIN v$locked_object lo ON lo.session_id IN (ws.sid, bs.sid)
+        LEFT JOIN dba_objects o ON o.object_id = lo.object_id
+        WHERE lw.request > 0;
+        COMMIT;
+      END;
+    ]',
+    start_date      => SYSTIMESTAMP,
+    repeat_interval => 'FREQ=DAILY; BYHOUR=0; BYMINUTE=15; BYSECOND=0',
+    enabled         => TRUE
+  );
+END;
+/
+
+If you prefer a one-shot SQL*Plus spool at 00:15 instead of scheduler, I can provide that too.
+
+Final quick checklist for you to try now (no questions asked)
+	•	Run the SELECT COUNT(*) FROM v$lock; and the compact v$lock query above.
+	•	If you see waiters, run the robust single query with SET LONG 200000.
+	•	If you see nothing, create the scheduler capture and share the rows it inserts after next run.
+
+Paste any rows you get from the robust query or from the capture table and I will interpret them and tell you exactly whether to kill the session, contact the app team, or change the job.
+
