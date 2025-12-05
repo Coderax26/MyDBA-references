@@ -1,0 +1,90 @@
+SET LONG 200000
+SET PAGESIZE 200
+WITH
+-- waiting lock entries (v$lock where request>0)
+wait_locks AS (
+  SELECT l.sid        AS wait_sid,
+         l.type       AS wait_lock_type,
+         l.id1,
+         l.id2,
+         l.request
+  FROM v$lock l
+  WHERE l.request > 0
+),
+-- blocking lock entries (v$lock where block = 1)
+block_locks AS (
+  SELECT l.sid        AS block_sid,
+         l.type       AS block_lock_type,
+         l.id1,
+         l.id2,
+         l.lmode
+  FROM v$lock l
+  WHERE l.block = 1
+),
+-- map waiters to blockers either via v$session.blocking_session or lock id match
+wait_block_map AS (
+  SELECT
+    w.wait_sid,
+    COALESCE(s.blocking_session, b.block_sid) AS blocker_sid,
+    w.wait_lock_type,
+    b.block_lock_type,
+    w.id1, w.id2,
+    w.request
+  FROM wait_locks w
+  LEFT JOIN v$session s ON s.sid = w.wait_sid
+  LEFT JOIN block_locks b
+    ON b.id1 = w.id1
+   AND b.id2 = w.id2
+   -- exclude trivial self-match
+   AND b.block_sid != w.wait_sid
+),
+-- session and SQL context for waiters and blockers
+sess_info AS (
+  SELECT s.sid, s.serial#, s.username, s.osuser, s.machine, s.program,
+         s.module, s.action, s.status, s.sql_id, s.event, s.seconds_in_wait,
+         s.state, s.blocking_session, s.blocking_session_status
+  FROM v$session s
+  WHERE s.username IS NOT NULL
+),
+sql_texts AS (
+  SELECT sql_id, sql_text
+  FROM v$sql
+)
+SELECT
+  wm.wait_sid,
+  ws.serial#                         AS wait_serial,
+  ws.username                        AS wait_user,
+  ws.osuser                          AS wait_osuser,
+  ws.machine                         AS wait_machine,
+  ws.program                         AS wait_program,
+  ws.module                          AS wait_module,
+  ws.action                          AS wait_action,
+  ws.status                          AS wait_status,
+  ws.sql_id                          AS wait_sql_id,
+  wt.sql_text                        AS wait_sql_text,
+  ws.event                           AS wait_event,
+  ws.seconds_in_wait                 AS seconds_in_wait,
+  wm.blocker_sid,
+  bs.serial#                         AS block_serial,
+  bs.username                        AS block_user,
+  bs.osuser                          AS block_osuser,
+  bs.machine                         AS block_machine,
+  bs.program                         AS block_program,
+  bs.module                          AS block_module,
+  bs.status                          AS block_status,
+  bs.sql_id                          AS block_sql_id,
+  bt.sql_text                        AS block_sql_text,
+  lo.owner                           AS locked_owner,
+  o.object_name                      AS locked_object,
+  o.object_type                      AS locked_obj_type,
+  wm.wait_lock_type,
+  wm.block_lock_type,
+  wm.request
+FROM wait_block_map wm
+LEFT JOIN sess_info ws ON ws.sid = wm.wait_sid
+LEFT JOIN sess_info bs ON bs.sid = wm.blocker_sid
+LEFT JOIN sql_texts wt ON wt.sql_id = ws.sql_id
+LEFT JOIN sql_texts bt ON bt.sql_id = bs.sql_id
+LEFT JOIN v$locked_object lo ON lo.session_id = wm.blocker_sid OR lo.session_id = wm.wait_sid
+LEFT JOIN dba_objects o ON o.object_id = lo.object_id
+ORDER BY wm.wait_sid;
