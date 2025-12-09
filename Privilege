@@ -1,0 +1,219 @@
+Yes, this is a standard Oracle privilege hardening activity where ANY privileges are being replaced with object level privileges. Below are the complete DBA steps you should follow in production with proper safety.
+
+I am assuming:
+	•	User: CMSSBG
+	•	Database: Oracle 19c or similar
+	•	You have DBA access
+
+⸻
+
+1. PRECHECK STEPS (Before Making Any Change)
+
+1.1 Confirm Existing Privileges
+
+Run this to capture current system privileges of CMSSBG:
+
+SELECT * 
+FROM dba_sys_privs 
+WHERE grantee = 'CMSSBG'
+ORDER BY privilege;
+
+Also check object privileges:
+
+SELECT * 
+FROM dba_tab_privs 
+WHERE grantee = 'CMSSBG'
+ORDER BY owner, table_name;
+
+Save this output. This is your rollback reference.
+
+⸻
+
+1.2 Identify Objects Used by CMSSBG
+
+This is important because after removing ANY privileges, the user can only access explicitly granted objects:
+
+SELECT DISTINCT owner 
+FROM dba_objects 
+WHERE owner IN (
+  SELECT owner FROM dba_tab_privs WHERE grantee = 'CMSSBG'
+);
+
+If application uses other schemas, you must grant object level privileges on those schemas.
+
+⸻
+
+1.3 Check Active Sessions (Very Important)
+
+SELECT sid, serial#, status, username, machine, program
+FROM v$session
+WHERE username = 'CMSSBG';
+
+If active, inform application team or wait for idle window.
+
+⸻
+
+2. BACKUP (ROLLBACK SAFETY)
+
+2.1 Generate Privilege Restore Script
+
+Run this and save output in a text file:
+
+SELECT 
+  'GRANT ' || privilege || ' TO ' || grantee || ';' 
+FROM dba_sys_privs
+WHERE grantee = 'CMSSBG';
+
+Also take object grants backup:
+
+SELECT 
+  'GRANT ' || privilege || ' ON ' || owner || '.' || table_name || ' TO ' || grantee || ';'
+FROM dba_tab_privs
+WHERE grantee = 'CMSSBG';
+
+This is your instant rollback script if anything fails.
+
+⸻
+
+3. CHANGE IMPLEMENTATION (As Per Mail)
+
+You are converting:
+
+REMOVE	ADD
+CREATE ANY TABLE	CREATE TABLE
+DELETE ANY TABLE	DELETE TABLE
+UPDATE ANY TABLE	UPDATE TABLE
+INSERT ANY TABLE	INSERT TABLE
+SELECT ANY TABLE	SELECT TABLE
+DROP ANY TABLE	DROP TABLE
+ALTER ANY TABLE	ALTER TABLE
+CREATE ANY INDEX	CREATE INDEX
+ALTER ANY INDEX	ALTER INDEX
+EXECUTE ANY PROCEDURE	EXECUTE PROCEDURE
+ALTER ANY TRIGGER	ALTER TRIGGER
+SELECT ANY DICTIONARY	SELECT DICTIONARY
+
+
+⸻
+
+3.1 Revoke Dangerous ANY Privileges
+
+REVOKE CREATE ANY TABLE FROM CMSSBG;
+REVOKE DELETE ANY TABLE FROM CMSSBG;
+REVOKE UPDATE ANY TABLE FROM CMSSBG;
+REVOKE INSERT ANY TABLE FROM CMSSBG;
+REVOKE SELECT ANY TABLE FROM CMSSBG;
+REVOKE DROP ANY TABLE FROM CMSSBG;
+REVOKE ALTER ANY TABLE FROM CMSSBG;
+REVOKE CREATE ANY INDEX FROM CMSSBG;
+REVOKE ALTER ANY INDEX FROM CMSSBG;
+REVOKE EXECUTE ANY PROCEDURE FROM CMSSBG;
+REVOKE ALTER ANY TRIGGER FROM CMSSBG;
+REVOKE SELECT ANY DICTIONARY FROM CMSSBG;
+
+
+⸻
+
+3.2 Grant Safer Local Privileges
+
+GRANT CREATE TABLE TO CMSSBG;
+GRANT DELETE TABLE TO CMSSBG;
+GRANT UPDATE TABLE TO CMSSBG;
+GRANT INSERT TABLE TO CMSSBG;
+GRANT SELECT TABLE TO CMSSBG;
+GRANT DROP TABLE TO CMSSBG;
+GRANT ALTER TABLE TO CMSSBG;
+GRANT CREATE INDEX TO CMSSBG;
+GRANT ALTER INDEX TO CMSSBG;
+GRANT EXECUTE PROCEDURE TO CMSSBG;
+GRANT ALTER TRIGGER TO CMSSBG;
+GRANT SELECT DICTIONARY TO CMSSBG;
+
+⚠ Important:
+These only allow actions inside CMSSBG schema, not other schemas.
+
+⸻
+
+4. POST CHANGE OBJECT GRANTS (If Application Uses Other Schemas)
+
+If app uses tables from another schema like APP_OWNER, then you must grant explicitly:
+
+GRANT SELECT, INSERT, UPDATE, DELETE 
+ON APP_OWNER.TXN_TABLE TO CMSSBG;
+
+For procedures:
+
+GRANT EXECUTE ON APP_OWNER.PROC_NAME TO CMSSBG;
+
+Without this, application will fail.
+
+⸻
+
+5. VERIFICATION STEPS (After Change)
+
+5.1 Verify Removed ANY Privileges
+
+SELECT * 
+FROM dba_sys_privs 
+WHERE grantee = 'CMSSBG'
+AND privilege LIKE '%ANY%';
+
+Expected: No rows
+
+⸻
+
+5.2 Verify New Granted Privileges
+
+SELECT * 
+FROM dba_sys_privs 
+WHERE grantee = 'CMSSBG'
+ORDER BY privilege;
+
+Confirm only limited privileges exist.
+
+⸻
+
+5.3 Functional Testing (Mandatory)
+
+Ask application team to test:
+	•	Login
+	•	Insert transaction
+	•	Update transaction
+	•	Delete transaction
+	•	Run reports
+	•	Trigger based operations
+	•	Batch or job execution
+
+Monitor errors:
+
+SELECT * FROM dba_errors WHERE owner='CMSSBG';
+
+
+⸻
+
+6. ROLLBACK PLAN (If Issue Happens)
+
+Just execute your backup script generated in Step 2:
+
+GRANT CREATE ANY TABLE TO CMSSBG;
+GRANT SELECT ANY TABLE TO CMSSBG;
+...
+
+Or simply restore full privileges from saved output.
+
+⸻
+
+7. RISK IMPACT SUMMARY (For Your Change Record)
+	•	✅ Improves security by removing ANY privileges
+	•	✅ Restricts user to own schema
+	•	⚠ Application may break if cross schema access exists
+	•	✅ Fully reversible
+
+⸻
+
+If you want, I can also:
+	•	Generate a single execution script
+	•	Generate a rollback script
+	•	Or review your actual grant outputs to validate safety
+
+If you want that, just paste your DBA_SYS_PRIVS output here.
