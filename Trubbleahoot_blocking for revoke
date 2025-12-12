@@ -1,0 +1,84 @@
+Good question. There is no single metadata column that lists “this object is using DELETE ANY TABLE” because those system privileges are used at runtime by code or sessions. Still you can locate likely culprits and current blockers with a few targeted queries. Run these in SQL*Plus or your SQL client.
+	1.	See active sessions for the user
+
+set lines 200
+col program for a40
+select sid, serial#, username, status, machine, program, module
+from v$session
+where username = 'CMSSBG';
+
+If any rows appear those sessions may be executing code that requires the ANY privileges.
+	2.	See who holds locks on objects right now
+
+select s.sid, s.serial#, s.username, s.program, o.owner, o.object_name, o.object_type
+from v$locked_object lo
+join dba_objects o on lo.object_id = o.object_id
+join v$session s on lo.session_id = s.sid
+order by s.sid;
+
+This shows objects that currently hold locks. If one of these sessions is blocking the revoke, it will show up here.
+	3.	Find dependencies of CMSSBG objects on other schemas
+
+select owner, name, type,
+       referenced_owner, referenced_name, referenced_type
+from dba_dependencies
+where owner = 'CMSSBG'
+  and referenced_owner <> 'CMSSBG'
+order by referenced_owner, referenced_name;
+
+If CMSSBG packages or procedures reference objects in other schemas, those cross schema calls often require ANY privileges or create dictionary lock activity during revoke.
+	4.	List executable objects owned by CMSSBG (good candidates to inspect)
+
+select owner, object_name, object_type, status
+from dba_objects
+where owner = 'CMSSBG'
+  and object_type in ('PROCEDURE','FUNCTION','PACKAGE','PACKAGE BODY','TRIGGER')
+order by object_type, object_name;
+
+Open the source for the suspect objects to look for dynamic SQL or cross schema DML. Example to search source for keywords:
+
+select owner, name, type, line, text
+from dba_source
+where owner = 'CMSSBG'
+  and upper(text) like '%DELETE %'
+order by name, line;
+
+Repeat for INSERT, UPDATE, TRUNCATE, EXECUTE IMMEDIATE, etc.
+	5.	Check scheduled jobs and DBMS jobs
+
+select owner, job_name, enabled, state
+from dba_scheduler_jobs
+where owner = 'CMSSBG';
+
+select sid, job#, what, this_date
+from dba_jobs_running;
+
+Jobs running as CMSSBG can hold resources.
+	6.	See which roles and privileges CMSSBG currently has (for context)
+
+select * from dba_sys_privs where grantee = 'CMSSBG';
+select * from dba_role_privs where grantee = 'CMSSBG';
+
+	7.	Find sessions holding enqueue locks or waiting (to identify blockers)
+
+select l.sid, s.username, l.type, l.lmode, l.request, l.id1, l.id2, s.module
+from v$lock l
+join v$session s on l.sid = s.sid
+order by s.username, l.type;
+
+Look for sessions with request > 0 which are waiting.
+	8.	If you want to capture actual usage of the ANY privileges going forward enable auditing for those privileged actions (so you can see which session invoked them). Example:
+
+-- traditional audit
+audit delete any table by access;
+audit insert any table by access;
+audit update any table by access;
+
+Or use Unified Auditing if your DB uses it. After enabling, check dba_audit_trail or unified audit views.
+
+Practical workflow I use
+	1.	Run step 1 and 2 to find active sessions and locked objects. Kill or stop those sessions if safe.
+	2.	Stop scheduled jobs and external jobs for CMSSBG.
+	3.	Re-run the REVOKE. If it still fails, enable auditing briefly and reproduce to capture the offender.
+
+If you paste the results of the key queries (v$session rows and v$locked_object output, plus a sample from dba_dependencies) I will point to the exact object or session likely causing the deadlock and give the next command to safely stop it.
