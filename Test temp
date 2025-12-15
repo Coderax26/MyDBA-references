@@ -340,6 +340,53 @@ Sr. No.	Action	Team	Approx. Time / Notes
 If you want, I can draft this in a tabular Excel-ready format (so you can directly paste it into your sheet with your original layout). Would you like me to prepare that version?
 
 
+SELECT
+    u.username                                   AS db_user,
+
+    /* Roles */
+    LISTAGG(DISTINCT rp.granted_role, ', ')
+        WITHIN GROUP (ORDER BY rp.granted_role) AS roles,
+
+    /* SYSDBA / SYSOPER / SYSASM / SYSDG / SYSKM */
+    MAX(p.sysdba)    AS sysdba,
+    MAX(p.sysoper)   AS sysoper,
+    MAX(p.sysasm)    AS sysasm,
+    MAX(p.sysdg)     AS sysdg,
+    MAX(p.syskm)     AS syskm,
+
+    /* System privileges */
+    LISTAGG(DISTINCT sp.privilege, ', ')
+        WITHIN GROUP (ORDER BY sp.privilege)    AS system_privileges,
+
+    /* Table / View privileges */
+    LISTAGG(
+        DISTINCT tp.owner || '.' || tp.table_name || ':' || tp.privilege,
+        ', '
+    ) WITHIN GROUP (ORDER BY tp.owner, tp.table_name, tp.privilege)
+                                                AS table_privileges
+
+FROM dba_users u
+
+/* Roles */
+LEFT JOIN dba_role_privs rp
+       ON rp.grantee = u.username
+
+/* System privileges */
+LEFT JOIN dba_sys_privs sp
+       ON sp.grantee = u.username
+
+/* Table privileges */
+LEFT JOIN dba_tab_privs tp
+       ON tp.grantee = u.username
+
+/* SYSDBA and similar */
+LEFT JOIN v$pwfile_users p
+       ON p.username = u.username
+
+GROUP BY u.username
+ORDER BY u.username;
+
+
 
 
 
