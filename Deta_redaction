@@ -1,0 +1,256 @@
+First, a small correction.
+What you are looking at is Oracle Data Redaction, not reduction.
+Redaction means hiding sensitive data when it is queried, without changing the stored data.
+
+Now I will explain it step by step, very simply, using your screenshot.
+
+⸻
+
+1. What is Oracle Data Redaction (in plain words)
+
+Think of redaction like this:
+	•	Data in table is stored fully in database
+Example:
+9876543210
+	•	When a user runs a SELECT query, Oracle masks part of the value
+Example user sees:
+XXXXXX3210
+	•	No UPDATE happens
+	•	No data is lost
+	•	Only SELECT output is masked
+
+This is mainly used for:
+	•	Mobile numbers
+	•	PAN
+	•	Account numbers
+	•	Aadhaar
+	•	Customer IDs
+
+⸻
+
+2. Big picture of what your script is doing
+
+Your script has three parts:
+	1.	Redact MOBILE_NO column
+	2.	Create a new redaction policy for Customer ID / PAN-like data
+	3.	Alter an existing redaction policy
+
+All of this is done using:
+
+DBMS_REDACT.ADD_POLICY
+DBMS_REDACT.ALTER_POLICY
+
+
+⸻
+
+3. First block – Mobile number redaction
+
+Code part (simplified)
+
+DBMS_REDACT.ADD_POLICY (
+  object_schema => 'CMSSBG',
+  object_name   => 'DECI',
+  policy_name   => 'REDACT_MOBNUM',
+  column_name   => 'MOBILE_NO',
+  function_type => DBMS_REDACT.REGEXP,
+  expression    => '1=1',
+  regexp_pattern => '(\d\d)(\d\d\d\d)(\d\d)',
+  regexp_replace_string => 'XXXXXX\3'
+);
+
+Step by step explanation
+
+Step 1: Which table and column
+
+object_schema => 'CMSSBG'
+object_name   => 'DECI'
+column_name   => 'MOBILE_NO'
+
+Means:
+	•	Schema: CMSSBG
+	•	Table: DECI
+	•	Column to hide: MOBILE_NO
+
+⸻
+
+Step 2: Policy name
+
+policy_name => 'REDACT_MOBNUM'
+
+Just a name.
+Think of it like a label for this masking rule.
+
+⸻
+
+Step 3: When should redaction apply
+
+expression => '1=1'
+
+This means:
+	•	Always apply redaction
+	•	For all users
+	•	For all rows
+
+If later you want only non-admin users, you can change this.
+
+⸻
+
+Step 4: How masking is done (important part)
+
+function_type => DBMS_REDACT.REGEXP
+
+Means:
+	•	Use regular expression to hide data
+
+regexp_pattern => '(\d\d)(\d\d\d\d)(\d\d)'
+
+This splits the number into groups:
+	•	Group 1: first 2 digits
+	•	Group 2: next 4 digits
+	•	Group 3: last 2 digits
+
+Example mobile:
+
+98 7654 32
+
+regexp_replace_string => 'XXXXXX\3'
+
+Means:
+	•	Replace first 6 digits with X
+	•	Keep last 2 digits
+
+So:
+
+Original: 98765432
+Shown as: XXXXXX32
+
+Actual data remains unchanged in table.
+
+⸻
+
+4. Second block – Creating redaction for Customer ID / PAN
+
+What this block does
+
+DBMS_REDACT.ADD_POLICY (
+  object_name => 'CMS_UPLD_COREFILE_DOM_TEMP_VIR',
+  policy_name => 'REDACT_CUST_ID_ACCNO',
+  column_name => 'CUC_CUSTOMER_ID'
+);
+
+This creates a new redaction policy for:
+	•	Table: CMS_UPLD_COREFILE_DOM_TEMP_VIR
+	•	Column: CUC_CUSTOMER_ID
+
+⸻
+
+Special thing here
+
+regexp_pattern => DBMS_REDACT.RE_PATTERN_CC_L6_T4
+regexp_replace_string => DBMS_REDACT.RE_REDACT_CC_MIDDLE_DIGITS
+
+Oracle gives predefined patterns for credit card or PAN style numbers.
+
+Meaning:
+	•	Keep first 6 digits
+	•	Keep last 4 digits
+	•	Mask middle digits
+
+Example:
+
+Original: 123456789012
+Shown as: 123456XXXX12
+
+
+⸻
+
+5. Third block – Alter existing policy
+
+This part:
+
+DBMS_REDACT.ALTER_POLICY
+
+Means:
+	•	Policy already exists
+	•	You are modifying it
+	•	Adding or changing column redaction
+
+Here you add redaction to:
+
+column_name => 'CUC_PRIM_ACCNO'
+
+So now the same policy masks:
+	•	Customer ID
+	•	Primary account number
+
+⸻
+
+6. How to check if redaction is working
+
+Step 1: Query as normal user
+
+SELECT MOBILE_NO FROM CMSSBG.DECI;
+
+You will see:
+
+XXXXXX32
+
+
+⸻
+
+Step 2: Check actual stored value
+
+Login as schema owner or DBA:
+
+SELECT MOBILE_NO FROM CMSSBG.DECI;
+
+You will see:
+
+98765432
+
+
+⸻
+
+Step 3: Check redaction policy
+
+SELECT * FROM DBA_REDACTION_POLICIES;
+
+SELECT * FROM DBA_REDACTION_COLUMNS;
+
+
+⸻
+
+7. Simple animation in words (mental animation)
+
+Imagine this flow:
+
+User runs SELECT
+        ↓
+Oracle checks: Any redaction policy?
+        ↓
+Yes → Apply regex masking
+        ↓
+Masked data sent to user
+        ↓
+Original data stays untouched
+
+Think of it like a transparent black tape placed on screen, not on the paper.
+
+⸻
+
+8. Very important points to remember
+	•	Redaction works only for SELECT
+	•	INSERT, UPDATE, DELETE are not affected
+	•	Backup contains original data
+	•	Data is not encrypted
+	•	DBA can bypass redaction if configured
+
+⸻
+
+If you want, next I can:
+	•	Explain REGEXP part with more examples
+	•	Show difference between redaction and encryption
+	•	Show how to apply redaction only for specific users
+	•	Create a small test table and demo flow
+
+Just tell me.
