@@ -416,6 +416,39 @@ FULL OUTER JOIN tab_data t ON COALESCE(r.rn, s.rn) = t.rn
 ORDER BY COALESCE(r.rn, s.rn, t.rn);
 
 
+WITH role_data AS (
+    SELECT grantee, granted_role, 
+           ROW_NUMBER() OVER (PARTITION BY grantee ORDER BY granted_role) AS rn
+    FROM dba_role_privs 
+),
+sys_data AS (
+    SELECT grantee, privilege, 
+           ROW_NUMBER() OVER (PARTITION BY grantee ORDER BY privilege) AS rn
+    FROM dba_sys_privs 
+),
+tab_data AS (
+    SELECT grantee, privilege || ' on ' || owner || '.' || table_name AS tab_priv_str, 
+           ROW_NUMBER() OVER (PARTITION BY grantee ORDER BY owner, table_name) AS rn
+    FROM dba_tab_privs 
+)
+SELECT 
+    COALESCE(r.grantee, s.grantee, t.grantee) AS "USERNAME",
+    r.granted_role AS "Roles",
+    s.privilege    AS "PRIVILEGE",
+    t.tab_priv_str AS "Table_PRIVILEGE"
+FROM role_data r
+FULL OUTER JOIN sys_data s 
+    ON r.grantee = s.grantee AND r.rn = s.rn
+FULL OUTER JOIN tab_data t 
+    ON COALESCE(r.grantee, s.grantee) = t.grantee 
+    AND COALESCE(r.rn, s.rn) = t.rn
+-- Filter to remove internal Oracle accounts (SYS, SYSTEM, etc.)
+WHERE COALESCE(r.grantee, s.grantee, t.grantee) IN (
+    SELECT username FROM dba_users WHERE oracle_maintained = 'N'
+)
+ORDER BY "USERNAME", COALESCE(r.rn, s.rn, t.rn);
+
+
 
 
 
