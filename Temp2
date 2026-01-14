@@ -1,0 +1,219 @@
+Understood. If GoldenGate itself is not in your control, the only practical way is to prove from the database side that Replicat is being slowed by DB conditions. Below is a DBA focused, evidence driven checklist you can run on the target database while lag is increasing.
+
+I am keeping this strictly database side.
+
+⸻
+
+1. First confirm Replicat is actively applying and not idle
+
+GoldenGate Replicat sessions connect as DB sessions. Identify them.
+
+select sid, serial#, username, program, module, status
+from v$session
+where program like '%ggs%';
+
+If:
+	•	STATUS = ACTIVE but lag increases → DB side bottleneck
+	•	STATUS = INACTIVE → Replicat is waiting on GG side, DB is not the issue
+
+⸻
+
+2. Check what Replicat sessions are waiting on
+
+This is the most important query.
+
+select sid,
+       event,
+       wait_class,
+       seconds_in_wait,
+       state
+from v$session
+where sid in (
+  select sid from v$session where program like '%ggs%'
+);
+
+Interpret results
+
+Event	Meaning
+log file sync	Commit pressure
+enq: TX - row lock contention	Blocking by another session
+buffer busy waits	Hot blocks
+db file sequential read	Index lookup slow
+db file scattered read	Full scans
+free buffer waits	DBWR slow
+resmgr:cpu quantum	CPU throttling
+latch: cache buffers chains	Hot block or index
+
+If you see TX locks or buffer busy, DB is 100% the cause.
+
+⸻
+
+3. Identify blockers blocking Replicat
+
+Very common and often missed.
+
+select
+  s1.sid blocked_sid,
+  s2.sid blocker_sid,
+  s2.username blocker_user,
+  s2.program blocker_program
+from v$lock l1
+join v$session s1 on s1.sid = l1.sid
+join v$lock l2 on l1.id1 = l2.id1 and l1.id2 = l2.id2
+join v$session s2 on s2.sid = l2.sid
+where l1.request > 0
+and l2.lmode > 0
+and s1.program like '%ggs%';
+
+If Replicat is blocked:
+	•	By batch job
+	•	By reporting queries
+	•	By another Replicat
+
+You now have hard proof.
+
+⸻
+
+4. Check commit pressure
+
+GoldenGate commits very frequently.
+
+select name, value
+from v$sysstat
+where name in (
+ 'user commits',
+ 'log file sync',
+ 'redo size'
+);
+
+Also check wait time:
+
+select event, total_waits, time_waited/100 time_sec
+from v$system_event
+where event = 'log file sync';
+
+If log file sync time is high:
+	•	Slow redo disk
+	•	Slow LGWR
+	•	Too many commits per second
+
+This directly slows Replicat.
+
+⸻
+
+5. Check undo and rollback pressure
+
+If undo is stressed, apply slows.
+
+select begin_time,
+       undoblks,
+       txncount,
+       maxquerylen
+from v$undostat
+order by begin_time desc fetch first 10 rows only;
+
+Red flags:
+	•	Very high TXNCOUNT
+	•	Large MAXQUERYLEN
+	•	Undo tablespace close to full
+
+⸻
+
+6. Check index overhead on target
+
+GoldenGate applies row by row. Indexes hurt.
+
+Find tables with excessive indexes:
+
+select table_name, count(*) index_count
+from dba_indexes
+where owner = '<schema>'
+group by table_name
+having count(*) > 5
+order by index_count desc;
+
+Tables with many indexes slow Replicat badly during heavy apply.
+
+⸻
+
+7. Check for trigger overhead
+
+Triggers execute for every replicated row.
+
+select owner, table_name, trigger_name, status
+from dba_triggers
+where table_owner = '<schema>'
+and status = 'ENABLED';
+
+Enabled triggers on replicated tables are a classic Replicat killer.
+
+⸻
+
+8. Check segment and block contention
+
+Hot tables or indexes.
+
+select owner, object_name, object_type, statistic_name, value
+from v$segment_statistics
+where statistic_name in (
+ 'buffer busy waits',
+ 'row lock waits'
+)
+and value > 0
+order by value desc;
+
+If replicated tables appear here, DB contention is proven.
+
+⸻
+
+9. Check system resource pressure
+
+GoldenGate apply is CPU and IO sensitive.
+
+CPU throttling
+
+select * from v$rsrcmgrmetric;
+
+If you see resmgr:cpu quantum, Resource Manager is slowing Replicat.
+
+IO latency
+
+select file_name, average_read_time
+from v$filestat fs join dba_data_files df
+on fs.file# = df.file_id
+order by average_read_time desc;
+
+
+⸻
+
+10. Correlate lag time with DB load
+
+Match lag increase time with:
+	•	AWR reports
+	•	Batch jobs
+	•	Index rebuilds
+	•	Stats gathering
+	•	Reports
+
+GoldenGate lag rarely happens in isolation.
+
+⸻
+
+How to present this to GG / app team
+
+You should say things like:
+	•	“Replicat sessions are blocked by SID X on TX lock”
+	•	“Replicat waiting on log file sync due to commit pressure”
+	•	“Apply slowed due to enabled triggers and high index count”
+	•	“Resource Manager is throttling Replicat CPU”
+
+This shifts responsibility clearly.
+
+⸻
+
+If you want, paste:
+	•	Output of Replicat session waits
+	•	Blocking session query
+	•	Top wait events during lag window
+
+I will tell you exactly which DB factor is slowing replication.
