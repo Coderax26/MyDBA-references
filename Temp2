@@ -1,4 +1,33 @@
 Understood. If GoldenGate itself is not in your control, the only practical way is to prove from the database side that Replicat is being slowed by DB conditions. Below is a DBA focused, evidence driven checklist you can run on the target database while lag is increasing.
+SELECT
+    c.owner,
+    c.table_name,
+    c.column_name,
+    c.data_type,
+    c.data_length,
+    c.nullable,
+    CASE
+        WHEN uc.column_name IS NOT NULL THEN 'YES'
+        ELSE 'NO'
+    END AS unique_column
+FROM all_tab_columns c
+LEFT JOIN (
+    SELECT
+        acc.owner,
+        acc.table_name,
+        acc.column_name
+    FROM all_constraints ac
+    JOIN all_cons_columns acc
+        ON ac.owner = acc.owner
+       AND ac.constraint_name = acc.constraint_name
+    WHERE ac.constraint_type = 'U'
+      AND ac.owner = 'MCAS'
+) uc
+    ON c.owner = uc.owner
+   AND c.table_name = uc.table_name
+   AND c.column_name = uc.column_name
+WHERE c.owner = 'MCAS'
+ORDER BY c.table_name, c.column_id;
 
 I am keeping this strictly database side.
 
