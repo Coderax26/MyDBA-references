@@ -166,6 +166,31 @@ If replicated tables appear here, DB contention is proven.
 
 ⸻
 
+SELECT
+    c.table_name,
+    c.column_name,
+    c.data_type,
+    c.data_length,
+    c.nullable,
+    CASE
+        WHEN uc.column_name IS NOT NULL THEN 'YES'
+        ELSE 'NO'
+    END AS unique_column
+FROM user_tab_columns c
+LEFT JOIN (
+    SELECT
+        acc.table_name,
+        acc.column_name
+    FROM user_constraints ac
+    JOIN user_cons_columns acc
+        ON ac.constraint_name = acc.constraint_name
+    WHERE ac.constraint_type = 'U'
+) uc
+    ON c.table_name = uc.table_name
+   AND c.column_name = uc.column_name
+ORDER BY c.table_name, c.column_id;
+
+
 9. Check system resource pressure
 
 GoldenGate apply is CPU and IO sensitive.
