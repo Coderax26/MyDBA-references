@@ -1,0 +1,44 @@
+weekly tablespace growth (last 8 week)
+
+WITH ts_usage AS (
+    SELECT
+        t.name                          AS tablespace_name,
+        TRUNC(s.begin_interval_time, 'IW') AS week_start_date,
+        SUM(u.tablespace_size * ts.block_size) / 1024 / 1024 / 1024 AS size_gb
+    FROM
+        dba_hist_tbspc_space_usage u
+        JOIN dba_hist_snapshot s
+          ON u.snap_id = s.snap_id
+         AND u.dbid = s.dbid
+         AND u.instance_number = s.instance_number
+        JOIN v$tablespace t
+          ON u.tablespace_id = t.ts#
+        JOIN dba_tablespaces ts
+          ON t.name = ts.tablespace_name
+    WHERE
+        s.begin_interval_time >= TRUNC(SYSDATE) - 60
+    GROUP BY
+        t.name,
+        TRUNC(s.begin_interval_time, 'IW'),
+        ts.block_size
+)
+SELECT
+    tablespace_name,
+    week_start_date,
+    ROUND(MAX(size_gb), 2) AS week_end_size_gb,
+    ROUND(
+        MAX(size_gb)
+        - LAG(MAX(size_gb)) OVER (
+            PARTITION BY tablespace_name
+            ORDER BY week_start_date
+          ),
+        2
+    ) AS weekly_growth_gb
+FROM
+    ts_usage
+GROUP BY
+    tablespace_name,
+    week_start_date
+ORDER BY
+    tablespace_name,
+    week_start_date;
