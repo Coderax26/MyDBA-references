@@ -1,3 +1,44 @@
+get size of tables
+SELECT
+    t.owner,
+    t.table_name,
+    t.partitioned,
+    t.num_rows,
+    ROUND(NVL(seg.size_bytes, 0) / 1024 / 1024, 2) AS size_mb,
+    t.segment_created
+FROM
+    dba_tables t
+LEFT JOIN (
+    -- Non-partitioned table segments
+    SELECT owner, segment_name AS table_name, SUM(bytes) AS size_bytes
+    FROM dba_segments
+    WHERE segment_type = 'TABLE'
+    GROUP BY owner, segment_name
+
+    UNION ALL
+
+    -- Partitioned table segments
+    SELECT table_owner, table_name, SUM(bytes) AS size_bytes
+    FROM dba_tab_partitions
+    JOIN dba_segments 
+        ON  dba_segments.owner        = dba_tab_partitions.table_owner
+        AND dba_segments.segment_name = dba_tab_partitions.partition_name
+        AND dba_segments.segment_type IN ('TABLE PARTITION', 'TABLE SUBPARTITION')
+    GROUP BY table_owner, table_name
+) seg 
+    ON  seg.owner      = t.owner
+    AND seg.table_name = t.table_name
+WHERE
+    t.owner = 'YOUR_SCHEMA'
+ORDER BY
+    size_mb DESC NULLS LAST;
+
+
+
+
+
+
+
 Understood. If GoldenGate itself is not in your control, the only practical way is to prove from the database side that Replicat is being slowed by DB conditions. Below is a DBA focused, evidence driven checklist you can run on the target database while lag is increasing.
 SELECT
     c.owner,
