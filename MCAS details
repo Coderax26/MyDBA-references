@@ -1,0 +1,60 @@
+To provide the storage and data creation metrics for your **Universal Payment Framework (UPF)** application on **Oracle 19c RAC**, you can use the following SQL queries.
+Since these requests often require tracking growth over time, I have broken the queries down by the specific columns in your spreadsheet.
+### 1. Total Data Volume in Production & Archive
+This query calculates the actual size of the data stored in your tablespaces.
+```sql
+SELECT 
+    ROUND(SUM(bytes) / 1024 / 1024 / 1024, 2) AS TOTAL_PRODUCTION_GB,
+    ROUND(SUM(bytes) / 1024 / 1024 / 1024 / 1024, 4) AS TOTAL_PRODUCTION_TB
+FROM dba_segments;
+
+```
+*Note: If your "Archival" data is stored in specific tablespaces (e.g., ARCHIVE_DATA), add a WHERE tablespace_name = 'YOUR_ARCHIVE_TS' clause.*
+### 2. Incremental Daily & Monthly Data Creation
+To get accurate creation rates, we look at the history of segments. This query provides a daily breakdown of growth over the last 30 days.
+```sql
+SELECT 
+    TO_CHAR(begin_interval_time, 'YYYY-MM-DD') AS "Day",
+    ROUND(SUM(space_used_delta) / 1024 / 1024 / 1024, 2) AS "Daily_Creation_GB"
+FROM dba_hist_snapshot
+JOIN dba_hist_seg_stat USING (snap_id)
+WHERE begin_interval_time > TRUNC(SYSDATE) - 30
+GROUP BY TO_CHAR(begin_interval_time, 'YYYY-MM-DD')
+ORDER BY 1 DESC;
+
+```
+ * **For Monthly:** Sum the "Daily_Creation_GB" values for the current month.
+### 3. Total Data in Log Files (Redo Logs)
+Since you are on a RAC environment, you need to sum the logs across all instances.
+```sql
+SELECT 
+    ROUND(SUM(bytes) * members / 1024 / 1024 / 1024, 2) AS TOTAL_LOG_FILES_GB
+FROM v$log;
+
+```
+### 4. Total Data in Backup Files
+This information is stored in the RMAN recovery catalog (or the control file). This query shows the size of the most recent full or incremental backups.
+```sql
+SELECT 
+    INPUT_TYPE, 
+    STATUS, 
+    START_TIME, 
+    END_TIME,
+    ROUND(INPUT_BYTES / 1024 / 1024 / 1024, 2) AS BACKUP_SIZE_GB
+FROM V$RMAN_BACKUP_JOB_DETAILS
+WHERE START_TIME > SYSDATE - 7
+ORDER BY START_TIME DESC;
+
+```
+### Summary Table for your Spreadsheet
+| Column Name | Source/Logic |
+|---|---|
+| **Incremental Daily** | Use the "Daily_Creation_GB" result from Query 2. |
+| **Monthly Data** | Aggregate Query 2 for the last 30 days. |
+| **Total Production** | Result from Query 1 (Total dba_segments). |
+| **Total Backup** | Use the BACKUP_SIZE_GB from the latest successful RMAN job. |
+| **Total Log File** | Total size of all online redo log groups (Query 3). |
+| **Total Archival** | Size of segments in your designated archival tablespaces. |
+### A Few Tips for "Meghdoot" (Cloud) Context:
+ * **RAC Specifics:** Ensure you are running these with SYSDBA privileges. Since RAC has multiple instances, standard V$ views usually aggregate, but GV$ views can give you instance-specific breakdowns if needed.
+ * **Compression:** If UPF uses Oracle Advanced Compression, the "Data Volume" will represent the compressed footprint. If the spreadsheet asks for "Raw Data," you may need to estimate based on compression ratios.
