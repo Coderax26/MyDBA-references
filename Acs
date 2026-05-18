@@ -1,0 +1,253 @@
+Below are the same scripts rewritten in proper Linux shell format. I kept the numbering as you requested.
+
+These scripts read /etc/passwd, skip system accounts like root, halt, sync, shutdown, nologin, and /bin/false, then validate user home directories and files.
+
+#!/bin/bash
+# -------------------------------
+# 1. Check missing home directory
+# -------------------------------
+grep -Ev '^(root|halt|sync|shutdown)' /etc/passwd | \
+awk -F: '($7 != "'"$(which nologin)"'" && $7 != "/bin/false") { print $1, $6 }' | \
+while read -r user dir
+do
+    if [ ! -d "$dir" ]; then
+        echo "The home directory \"$dir\" of user \"$user\" does not exist."
+    fi
+done
+#!/bin/bash
+# ----------------------------------------------------
+# 2. Check missing home directory and ownership of home
+# ----------------------------------------------------
+grep -Ev '^(root|halt|sync|shutdown)' /etc/passwd | \
+awk -F: '($7 != "'"$(which nologin)"'" && $7 != "/bin/false") { print $1, $6 }' | \
+while read -r user dir
+do
+    if [ ! -d "$dir" ]; then
+        echo "The home directory \"$dir\" of user \"$user\" does not exist."
+    else
+        owner=$(stat -L -c "%U" "$dir")
+        if [ "$owner" != "$user" ]; then
+            echo "The home directory \"$dir\" of user \"$user\" is owned by \"$owner\"."
+        fi
+    fi
+done
+#!/bin/bash
+# ---------------------------------------------------------
+# 3. Check group and other write permission on home files
+# ---------------------------------------------------------
+grep -Ev '^(root|halt|sync|shutdown)' /etc/passwd | \
+awk -F: '($7 != "'"$(which nologin)"'" && $7 != "/bin/false") { print $1, $6 }' | \
+while read -r user dir
+do
+    if [ ! -d "$dir" ]; then
+        echo "The home directory \"$dir\" of user \"$user\" does not exist."
+    else
+        for file in "$dir"/.[A-Za-z0-9]*
+        do
+            if [ ! -h "$file" ] && [ -f "$file" ]; then
+                fileperm=$(ls -ld "$file" | cut -c1-10)
+                if [ "$(echo "$fileperm" | cut -c6)" != "-" ]; then
+                    echo "Group write permission is set on file \"$file\"."
+                fi
+                if [ "$(echo "$fileperm" | cut -c9)" != "-" ]; then
+                    echo "Other write permission is set on file \"$file\"."
+                fi
+            fi
+        done
+    fi
+done
+#!/bin/bash
+# -----------------------------
+# 4. Check .forward file exists
+# -----------------------------
+grep -Ev '^(root|halt|sync|shutdown)' /etc/passwd | \
+awk -F: '($7 != "'"$(which nologin)"'" && $7 != "/bin/false") { print $1, $6 }' | \
+while read -r user dir
+do
+    if [ ! -d "$dir" ]; then
+        echo "The home directory \"$dir\" of user \"$user\" does not exist."
+    else
+        if [ -f "$dir/.forward" ]; then
+            echo ".forward file \"$dir/.forward\" exists."
+        fi
+    fi
+done
+#!/bin/bash
+# --------------------------
+# 5. Check .netrc file exists
+# --------------------------
+grep -Ev '^(root|halt|sync|shutdown)' /etc/passwd | \
+awk -F: '($7 != "'"$(which nologin)"'" && $7 != "/bin/false") { print $1, $6 }' | \
+while read -r user dir
+do
+    if [ ! -d "$dir" ]; then
+        echo "The home directory \"$dir\" of user \"$user\" does not exist."
+    else
+        if [ -f "$dir/.netrc" ]; then
+            echo ".netrc file \"$dir/.netrc\" exists."
+        fi
+    fi
+done
+#!/bin/bash
+# ---------------------------
+# 6. Check .rhosts file exists
+# ---------------------------
+grep -Ev '^(root|halt|sync|shutdown)' /etc/passwd | \
+awk -F: '($7 != "'"$(which nologin)"'" && $7 != "/bin/false") { print $1, $6 }' | \
+while read -r user dir
+do
+    if [ ! -d "$dir" ]; then
+        echo "The home directory \"$dir\" of user \"$user\" does not exist."
+    else
+        for file in "$dir"/.rhosts
+        do
+            if [ ! -h "$file" ] && [ -f "$file" ]; then
+                echo ".rhosts file in \"$dir\" exists."
+            fi
+        done
+    fi
+done
+
+Better version for Red Hat, because nologin path may be either /sbin/nologin or /usr/sbin/nologin. This avoids dependency on which nologin:
+
+#!/bin/bash
+awk -F: '
+$1 !~ /^(root|halt|sync|shutdown)$/ &&
+$7 !~ /(nologin|false)$/ {
+    print $1, $6
+}
+' /etc/passwd
+
+So if you want, you can replace this part in all scripts:
+
+grep -Ev '^(root|halt|sync|shutdown)' /etc/passwd | \
+awk -F: '($7 != "'"$(which nologin)"'" && $7 != "/bin/false") { print $1, $6 }'
+
+with this cleaner Red Hat compatible part:
+
+awk -F: '
+$1 !~ /^(root|halt|sync|shutdown)$/ &&
+$7 !~ /(nologin|false)$/ {
+    print $1, $6
+}
+' /etc/passwd
+
+My recommended final combined version is below. This will run all 6 checks together and still keeps the numbering.
+
+#!/bin/bash
+# ==========================================================
+# User home directory and hidden file security checks
+# Red Hat Linux compatible
+# ==========================================================
+get_users() {
+    awk -F: '
+    $1 !~ /^(root|halt|sync|shutdown)$/ &&
+    $7 !~ /(nologin|false)$/ {
+        print $1, $6
+    }
+    ' /etc/passwd
+}
+echo "-------------------------------"
+echo "1. Check missing home directory"
+echo "-------------------------------"
+get_users | while read -r user dir
+do
+    if [ ! -d "$dir" ]; then
+        echo "The home directory \"$dir\" of user \"$user\" does not exist."
+    fi
+done
+echo
+echo "----------------------------------------------------"
+echo "2. Check missing home directory and ownership of home"
+echo "----------------------------------------------------"
+get_users | while read -r user dir
+do
+    if [ ! -d "$dir" ]; then
+        echo "The home directory \"$dir\" of user \"$user\" does not exist."
+    else
+        owner=$(stat -L -c "%U" "$dir")
+        if [ "$owner" != "$user" ]; then
+            echo "The home directory \"$dir\" of user \"$user\" is owned by \"$owner\"."
+        fi
+    fi
+done
+echo
+echo "---------------------------------------------------------"
+echo "3. Check group and other write permission on home files"
+echo "---------------------------------------------------------"
+get_users | while read -r user dir
+do
+    if [ ! -d "$dir" ]; then
+        echo "The home directory \"$dir\" of user \"$user\" does not exist."
+    else
+        for file in "$dir"/.[A-Za-z0-9]*
+        do
+            [ -e "$file" ] || continue
+            if [ ! -h "$file" ] && [ -f "$file" ]; then
+                fileperm=$(ls -ld "$file" | awk '{print $1}')
+                if [ "$(echo "$fileperm" | cut -c6)" != "-" ]; then
+                    echo "Group write permission is set on file \"$file\"."
+                fi
+                if [ "$(echo "$fileperm" | cut -c9)" != "-" ]; then
+                    echo "Other write permission is set on file \"$file\"."
+                fi
+            fi
+        done
+    fi
+done
+echo
+echo "-----------------------------"
+echo "4. Check .forward file exists"
+echo "-----------------------------"
+get_users | while read -r user dir
+do
+    if [ ! -d "$dir" ]; then
+        echo "The home directory \"$dir\" of user \"$user\" does not exist."
+    else
+        if [ -f "$dir/.forward" ]; then
+            echo ".forward file \"$dir/.forward\" exists."
+        fi
+    fi
+done
+echo
+echo "--------------------------"
+echo "5. Check .netrc file exists"
+echo "--------------------------"
+get_users | while read -r user dir
+do
+    if [ ! -d "$dir" ]; then
+        echo "The home directory \"$dir\" of user \"$user\" does not exist."
+    else
+        if [ -f "$dir/.netrc" ]; then
+            echo ".netrc file \"$dir/.netrc\" exists."
+        fi
+    fi
+done
+echo
+echo "---------------------------"
+echo "6. Check .rhosts file exists"
+echo "---------------------------"
+get_users | while read -r user dir
+do
+    if [ ! -d "$dir" ]; then
+        echo "The home directory \"$dir\" of user \"$user\" does not exist."
+    else
+        if [ -f "$dir/.rhosts" ] && [ ! -h "$dir/.rhosts" ]; then
+            echo ".rhosts file \"$dir/.rhosts\" exists."
+        fi
+    fi
+done
+
+Run it like this:
+
+vi user_home_check.sh
+chmod +x user_home_check.sh
+./user_home_check.sh
+
+If you want to save output:
+
+./user_home_check.sh > user_home_check_output.txt
+
+Or with both output and error:
+
+./user_home_check.sh > user_home_check_output.txt 2>&1
