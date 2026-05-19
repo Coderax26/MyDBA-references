@@ -96,3 +96,41 @@ ORDER BY
     ash_samples DESC
 FETCH FIRST 20 ROWS ONLY;
 
+----- check sql text
+
+SELECT 
+    sql_id,
+    sql_text,
+    executions,
+    rows_processed,
+    elapsed_time/1000000 AS elapsed_secs
+FROM 
+    gv$sql
+WHERE 
+    sql_id IN (
+        'cxxuafmshc4uj',
+        '8z2vgmg3dxgnu',
+        '519msq7rvjcbw',
+        '6nf9k4x4wtwns'
+    )
+ORDER BY elapsed_time DESC;
+
+
+
+---- check LGWR health
+
+SELECT 
+    inst_id,
+    name,
+    value
+FROM gv$sysstat
+WHERE name IN (
+    'redo writes',
+    'redo write time',
+    'redo size',
+    'user commits',
+    'user rollbacks'
+)
+ORDER BY inst_id, name;
+
+
