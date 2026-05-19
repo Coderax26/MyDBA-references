@@ -1,0 +1,19 @@
+SELECT 
+    e.instance_number,
+    e.event_name,
+    e.total_waits,
+    e.time_waited_micro/1000000 AS time_waited_secs,
+    (e.time_waited_micro/1000000)/e.total_waits*1000 AS avg_wait_ms,
+    e.wait_class
+FROM 
+    dba_hist_system_event e
+    JOIN dba_hist_snapshot s 
+        ON e.snap_id = s.snap_id 
+        AND e.instance_number = s.instance_number
+WHERE 
+    s.begin_interval_time >= TO_TIMESTAMP('2026-05-19 10:00:00','YYYY-MM-DD HH24:MI:SS')
+    AND s.end_interval_time   <= TO_TIMESTAMP('2026-05-19 11:00:00','YYYY-MM-DD HH24:MI:SS')
+    AND e.wait_class NOT IN ('Idle','Background')
+ORDER BY 
+    time_waited_secs DESC
+FETCH FIRST 20 ROWS ONLY;
