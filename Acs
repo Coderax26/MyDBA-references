@@ -2,6 +2,12 @@ DB=PROD; SEC=10; CORES=$(nproc); HZ=$(getconf CLK_TCK); PIDS=$(ps -e -o pid= -o 
 
 
 
+DB=PROD; SEC=10; CORES=$(nproc); PIDS=$(ps -e -o pid= -o args= | awk -v db="$DB" '$0 ~ "ora_.*_"db || $0 ~ "oracle_?"db"([ ]|$|\\()" {print $1}' | paste -sd, -); pidstat -u -p "$PIDS" $SEC 1 | awk -v db=$DB -v cores=$CORES '/Average:/ && $8 ~ /^[0-9.]+$/ {cpu+=$8; count++} END {printf "%s PROCESS_CPU: %.2f%%  SERVER_CPU: %.2f%%  PROCESSES: %s\n", db, cpu, cpu/cores, count}'
+
+
+
+
+
 below are the same scripts rewritten in proper Linux shell format. I kept the numbering as you requested.
 
 These scripts read /etc/passwd, skip system accounts like root, halt, sync, shutdown, nologin, and /bin/false, then validate user home directories and files.
