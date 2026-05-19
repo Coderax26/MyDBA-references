@@ -64,3 +64,35 @@ ORDER BY
 FETCH FIRST 20 ROWS ONLY;
 
 
+
+
+
+
+--- query to identify sql causing event
+
+SELECT 
+    ash.inst_id,
+    ash.sql_id,
+    ash.event,
+    COUNT(*) AS ash_samples,
+    ash.sql_opname,
+    ash.program,
+    ash.module
+FROM 
+    gv$active_session_history ash
+WHERE 
+    ash.sample_time >= SYSDATE - INTERVAL '60' MINUTE
+    AND ash.session_state = 'WAITING'
+    AND ash.event IN (
+        'log file sync',
+        'gc buffer busy acquire',
+        'enq: TX - index contention',
+        'gc cr grant 2-way'
+    )
+GROUP BY 
+    ash.inst_id, ash.sql_id, ash.event, 
+    ash.sql_opname, ash.program, ash.module
+ORDER BY 
+    ash_samples DESC
+FETCH FIRST 20 ROWS ONLY;
+
