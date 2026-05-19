@@ -1,3 +1,4 @@
+from awr ----
 SELECT 
     e.instance_number,
     e.event_name,
@@ -17,3 +18,49 @@ WHERE
 ORDER BY 
     time_waited_secs DESC
 FETCH FIRST 20 ROWS ONLY;
+
+-- fro my ash ---
+SELECT 
+    ash.instance_number,
+    ash.event,
+    ash.wait_class,
+    COUNT(*) AS ash_samples,
+    ROUND(COUNT(*)/SUM(COUNT(*)) OVER()*100,2) AS pct_total,
+    MIN(ash.sample_time) AS first_seen,
+    MAX(ash.sample_time) AS last_seen
+FROM 
+    dba_hist_active_sess_history ash
+WHERE 
+    ash.sample_time >= SYSDATE - INTERVAL '60' MINUTE
+    AND ash.session_state = 'WAITING'
+    AND ash.wait_class NOT IN ('Idle')
+GROUP BY 
+    ash.instance_number,
+    ash.event,
+    ash.wait_class
+ORDER BY 
+    ash_samples DESC
+FETCH FIRST 20 ROWS 
+
+-- if its very recent then ---
+
+SELECT 
+    inst_id,
+    event,
+    wait_class,
+    COUNT(*) AS ash_samples,
+    MIN(sample_time) AS first_seen,
+    MAX(sample_time) AS last_seen
+FROM 
+    gv$active_session_history
+WHERE 
+    sample_time >= SYSDATE - INTERVAL '60' MINUTE
+    AND session_state = 'WAITING'
+    AND wait_class NOT IN ('Idle')
+GROUP BY 
+    inst_id, event, wait_class
+ORDER BY 
+    ash_samples DESC
+FETCH FIRST 20 ROWS ONLY;
+
+
