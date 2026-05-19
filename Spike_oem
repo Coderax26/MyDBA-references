@@ -159,3 +159,58 @@ ORDER BY ash_samples DESC
 FETCH FIRST 10 ROWS ONLY;
 
 
+
+
+----check index structure
+
+SELECT 
+    i.index_name,
+    i.index_type,
+    i.partitioning_type,
+    i.status,
+    i.leaf_blocks,
+    i.blevel,
+    i.clustering_factor,
+    ip.partition_name,
+    ip.status AS part_status,
+    ip.leaf_blocks AS part_leaf_blocks
+FROM 
+    dba_indexes i
+    JOIN dba_ind_partitions ip 
+        ON i.index_name = ip.index_name
+        AND i.owner = ip.index_owner
+WHERE 
+    i.owner = 'SBINRT82'
+    AND i.index_name IN (
+        'IDX_DETAIL_SM_SEC_ACCT_NUM',
+        'IDX_DETAIL_SM_DEVICE_ID',
+        'IDX_SHORTWINDOW_CLUSTER',
+        'IDX_SHORTWINDOW_SD_REMOTE_IP'
+    )
+ORDER BY 
+    i.index_name, ip.partition_position DESC
+FETCH FIRST 20 ROWS ONLY;
+
+
+
+------ check if reversed or hash key
+SELECT 
+    index_name,
+    index_type,
+    partitioning_type,
+    subpartitioning_type,
+    def_subpartition_count,
+    partition_count
+FROM 
+    dba_part_indexes
+WHERE 
+    owner = 'SBINRT82'
+    AND index_name IN (
+        'IDX_DETAIL_SM_SEC_ACCT_NUM',
+        'IDX_DETAIL_SM_DEVICE_ID',
+        'IDX_SHORTWINDOW_CLUSTER',
+        'IDX_SHORTWINDOW_SD_REMOTE_IP'
+    );
+
+
+
