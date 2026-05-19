@@ -134,3 +134,28 @@ WHERE name IN (
 ORDER BY inst_id, name;
 
 
+
+
+---- check hot index
+
+SELECT 
+    ash.inst_id,
+    ash.current_obj#,
+    o.object_name,
+    o.object_type,
+    o.owner,
+    COUNT(*) AS ash_samples
+FROM 
+    gv$active_session_history ash
+    JOIN dba_objects o 
+        ON ash.current_obj# = o.object_id
+WHERE 
+    ash.sample_time >= SYSDATE - INTERVAL '60' MINUTE
+    AND ash.event = 'enq: TX - index contention'
+GROUP BY 
+    ash.inst_id, ash.current_obj#, 
+    o.object_name, o.object_type, o.owner
+ORDER BY ash_samples DESC
+FETCH FIRST 10 ROWS ONLY;
+
+
