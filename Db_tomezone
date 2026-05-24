@@ -1,0 +1,202 @@
+Dear Team,
+
+Thank you for the guidance. As advised, we have prepared the below Plan of Action (POA) for DST upgrade activity on our 6-Node Oracle 23ai RAC database.
+
+Request your confirmation before we proceed.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ENVIRONMENT DETAILS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DB Version   : Oracle 23ai (23.26.2.0.0)
+Instance     : prmrptdb1
+Node 1 Host  : dritprmdbrac01
+RAC Nodes    : 6 Nodes
+DB Type      : Multitenant (CDB + PDB)
+PDB Name     : PDBRPT
+Current DST  : PRIMARY=44, SECONDARY=43
+Upgrade State: UPGRADE (stuck)
+Ref Doc      : Doc ID 2794739.1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PLAN OF ACTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+▶ PRE-CHECKS (Before Activity)
+──────────────────────────────
+PC-1. Verify current DST state
+      SQL> SELECT CON_ID, PROPERTY_NAME,
+                  SUBSTR(PROPERTY_VALUE,1,15) VALUE
+           FROM CDB_PROPERTIES
+           WHERE PROPERTY_NAME LIKE 'DST_%'
+           ORDER BY CON_ID, PROPERTY_NAME;
+
+PC-2. Check active sessions / users
+      SQL> SELECT COUNT(*) FROM V$SESSION
+           WHERE STATUS = 'ACTIVE'
+           AND USERNAME IS NOT NULL;
+
+PC-3. RMAN Backup confirmation
+      → Confirm latest backup is available
+        before starting activity
+
+▶ STEP 1 — Clear Orphan Datapump Jobs
+──────────────────────────────────────
+First in CDB$ROOT, then in PDBRPT
+
+-- Check orphan jobs
+SQL> SELECT OWNER_NAME, JOB_NAME, STATE,
+            OPERATION, JOB_MODE,
+            ATTACHED_SESSIONS
+     FROM DBA_DATAPUMP_JOBS
+     WHERE STATE = 'NOT RUNNING'
+     ORDER BY OWNER_NAME, JOB_NAME;
+
+-- For each orphan job found, drop it:
+SQL> DECLARE
+       h1 NUMBER;
+     BEGIN
+       h1 := DBMS_DATAPUMP.ATTACH(
+               job_name  => '&JOB_NAME',
+               job_owner => '&OWNER_NAME');
+       DBMS_DATAPUMP.STOP_JOB(h1, 1, 0);
+     END;
+     /
+
+-- Drop leftover master tables if any:
+SQL> DROP TABLE <OWNER>.<JOB_NAME> PURGE;
+
+-- Verify no orphan jobs remain:
+SQL> SELECT OWNER_NAME, JOB_NAME, STATE
+     FROM DBA_DATAPUMP_JOBS
+     WHERE STATE = 'NOT RUNNING';
+     -- Expected: NO ROWS
+
+▶ STEP 2 — Bounce PDBRPT (PDB Restart)
+──────────────────────────────────────
+SQL> ALTER SESSION SET CONTAINER = CDB$ROOT;
+SQL> ALTER PLUGGABLE DATABASE PDBRPT CLOSE IMMEDIATE;
+SQL> ALTER PLUGGABLE DATABASE PDBRPT OPEN;
+
+-- Verify PDB is open:
+SQL> SELECT CON_ID, NAME, OPEN_MODE
+     FROM V$PDBS
+     WHERE NAME = 'PDBRPT';
+     -- Expected: READ WRITE
+
+▶ STEP 3 — Run DST Upgrade (CDB First)
+──────────────────────────────────────
+-- Connect to CDB$ROOT on Node 1
+$ cd $ORACLE_HOME/rdbms/admin
+$ sqlplus / as sysdba
+
+SQL> SHOW CON_NAME;
+     -- Expected: CDB$ROOT
+
+-- Run check script first:
+SQL> spool /tmp/utltz_upg_check_cdb.log
+SQL> @utltz_upg_check.sql
+SQL> spool off
+
+-- Review log for errors, then apply:
+SQL> spool /tmp/utltz_upg_apply_cdb.log
+SQL> @utltz_upg_apply.sql
+SQL> spool off
+
+⚠️ NOTE: Script will shutdown and restart
+         DB 2 times automatically.
+         All 6 RAC instances will restart.
+         DO NOT interrupt the script.
+
+-- Verify CDB after upgrade:
+SQL> SELECT CON_ID, PROPERTY_NAME,
+            SUBSTR(PROPERTY_VALUE,1,15) VALUE
+     FROM CDB_PROPERTIES
+     WHERE PROPERTY_NAME LIKE 'DST_%'
+     AND CON_ID = 1
+     ORDER BY PROPERTY_NAME;
+     -- Expected:
+     -- DST_PRIMARY_TT_VERSION   = 43
+     -- DST_SECONDARY_TT_VERSION = 0
+     -- DST_UPGRADE_STATE        = NONE ✅
+
+▶ STEP 4 — Run DST Upgrade (PDBRPT)
+──────────────────────────────────────
+SQL> ALTER SESSION SET CONTAINER = PDBRPT;
+SQL> SHOW CON_NAME;
+     -- Expected: PDBRPT
+
+SQL> spool /tmp/utltz_upg_check_pdbrpt.log
+SQL> @utltz_upg_check.sql
+SQL> spool off
+
+SQL> spool /tmp/utltz_upg_apply_pdbrpt.log
+SQL> @utltz_upg_apply.sql
+SQL> spool off
+
+-- Verify PDBRPT after upgrade:
+SQL> SELECT CON_ID, PROPERTY_NAME,
+            SUBSTR(PROPERTY_VALUE,1,15) VALUE
+     FROM CDB_PROPERTIES
+     WHERE PROPERTY_NAME LIKE 'DST_%'
+     AND CON_ID = 3
+     ORDER BY PROPERTY_NAME;
+     -- Expected:
+     -- DST_PRIMARY_TT_VERSION   = 43
+     -- DST_SECONDARY_TT_VERSION = 0
+     -- DST_UPGRADE_STATE        = NONE ✅
+
+▶ STEP 5 — Final Verification (All 6 Nodes)
+──────────────────────────────────────────
+-- All nodes timezone version:
+SQL> SELECT INST_ID, VERSION
+     FROM GV$TIMEZONE_FILE
+     ORDER BY INST_ID;
+     -- All 6 nodes: VERSION = 43 ✅
+
+-- CDB + PDB final state:
+SQL> SELECT CON_ID, PROPERTY_NAME,
+            SUBSTR(PROPERTY_VALUE,1,15) VALUE
+     FROM CDB_PROPERTIES
+     WHERE PROPERTY_NAME LIKE 'DST_%'
+     ORDER BY CON_ID, PROPERTY_NAME;
+     -- Both CON_ID 1 and 3:
+     -- DST_UPGRADE_STATE = NONE ✅
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ACTIVITY WINDOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Proposed Date : [DD-MON-YYYY]
+Proposed Time : [HH:MM] to [HH:MM]
+Downtime      : Yes (DB restarts 2 times)
+Node          : Execute from Node 1 only
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ROLLBACK PLAN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+If upgrade fails at any step:
+→ EXEC DBMS_DST.UNLOAD_SECONDARY();
+→ Restore from RMAN backup if needed
+→ Inform Oracle onsite team immediately
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+QUESTIONS FOR YOUR CONFIRMATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Q1. Is the above POA steps correct as per
+    your guidance?
+
+Q2. Should utltz_upg_apply.sql be run
+    separately for CDB and PDB both?
+    Or will CDB script handle PDB automatically?
+
+Q3. Any additional steps required specific
+    to 6-Node RAC before running the script?
+
+Q4. Please confirm proposed activity window
+    is acceptable.
+
+Request your approval to proceed.
+
+Thanks & Regards,
+[Your Name]
+[Designation]
+[Contact Number]
