@@ -14,3 +14,20 @@ v.playbackRate = 2.0;
 
 v.playbackRate = 16.0
 
+
+function findMediaInFrames(win = window, found = []) {
+  try {
+    win.document.querySelectorAll('video, audio').forEach(m => found.push(m));
+    for (let frame of win.frames) {
+      findMediaInFrames(frame, found);
+    }
+  } catch (e) {
+    console.log('Blocked by cross-origin:', e.message);
+  }
+  return found;
+}
+
+const mediaElements = findMediaInFrames();
+console.log('Found', mediaElements.length, 'media elements');
+mediaElements.forEach(m => m.playbackRate = 2.0);
+
