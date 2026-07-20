@@ -15,19 +15,35 @@ v.playbackRate = 2.0;
 v.playbackRate = 16.0
 
 
-function findMediaInFrames(win = window, found = []) {
+function findMediaInFrames(win = window, found = [], depth = 0) {
+  if (depth > 10) return found; // safety limit
+
   try {
     win.document.querySelectorAll('video, audio').forEach(m => found.push(m));
-    for (let frame of win.frames) {
-      findMediaInFrames(frame, found);
+  } catch (e) {
+    console.log('Cannot access document at depth', depth, e.message);
+    return found;
+  }
+
+  try {
+    const len = win.frames.length; // access length first
+    for (let i = 0; i < len; i++) {
+      try {
+        findMediaInFrames(win.frames[i], found, depth + 1);
+      } catch (e) {
+        console.log('Cannot access frame', i, 'at depth', depth, e.message);
+      }
     }
   } catch (e) {
-    console.log('Blocked by cross-origin:', e.message);
+    console.log('Cannot access frames list at depth', depth, e.message);
   }
+
   return found;
 }
 
 const mediaElements = findMediaInFrames();
-console.log('Found', mediaElements.length, 'media elements');
-mediaElements.forEach(m => m.playbackRate = 2.0);
-
+console.log('Found', mediaElements.length, 'media elements:', mediaElements);
+mediaElements.forEach(m => {
+  console.log(m.tagName, m.src || m.currentSrc);
+  m.playbackRate = 2.0;
+});
