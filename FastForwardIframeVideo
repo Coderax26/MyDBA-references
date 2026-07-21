@@ -15,35 +15,42 @@ v.playbackRate = 2.0;
 v.playbackRate = 16.0
 
 
-function findMediaInFrames(win = window, found = [], depth = 0) {
-  if (depth > 10) return found; // safety limit
+========================
+turn off seekbar
+
+function unlockSeekbar(win = window, depth = 0) {
+  if (depth > 10) return;
 
   try {
-    win.document.querySelectorAll('video, audio').forEach(m => found.push(m));
-  } catch (e) {
-    console.log('Cannot access document at depth', depth, e.message);
-    return found;
-  }
+    // 1. Force all seekbar elements to be clickable and remove the "disabled" look
+    const seekbarElements = win.document.querySelectorAll('[class*="seekbar"], [class*=" Seekbar"], [class*="track"], [class*="scrubber"], [class*="Thumb"]');
+    seekbarElements.forEach(el => {
+      el.style.pointerEvents = 'auto';
+      el.style.opacity = '1';
+      el.style.filter = 'none';
+      el.removeAttribute('disabled');
+      el.classList.remove('disabled', 'cs-button-disabled', 'state-disabled');
+    });
+
+    // 2. Sometimes Storyline uses a transparent overlay to block clicks. Let's remove those.
+    const overlays = win.document.querySelectorAll('[class*="overlay"], [class*="blocker"]');
+    overlays.forEach(el => {
+      if (getComputedStyle(el).position === 'absolute' && getComputedStyle(el).cursor === 'default') {
+         el.style.pointerEvents = 'none';
+      }
+    });
+
+  } catch (e) {}
 
   try {
-    const len = win.frames.length; // access length first
+    const len = win.frames.length;
     for (let i = 0; i < len; i++) {
       try {
-        findMediaInFrames(win.frames[i], found, depth + 1);
-      } catch (e) {
-        console.log('Cannot access frame', i, 'at depth', depth, e.message);
-      }
+        unlockSeekbar(win.frames[i], depth + 1);
+      } catch (e) {}
     }
-  } catch (e) {
-    console.log('Cannot access frames list at depth', depth, e.message);
-  }
-
-  return found;
+  } catch (e) {}
 }
 
-const mediaElements = findMediaInFrames();
-console.log('Found', mediaElements.length, 'media elements:', mediaElements);
-mediaElements.forEach(m => {
-  console.log(m.tagName, m.src || m.currentSrc);
-  m.playbackRate = 2.0;
-});
+unlockSeekbar();
+console.log('Seekbar unlock attempt complete. Try clicking and dragging the timeline now.');
