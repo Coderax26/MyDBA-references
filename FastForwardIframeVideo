@@ -54,3 +54,125 @@ function unlockSeekbar(win = window, depth = 0) {
 
 unlockSeekbar();
 console.log('Seekbar unlock attempt complete. Try clicking and dragging the timeline now.');
+
+
+
+------------------
+
+function unlockSeekbar(win = window, depth = 0) {
+  if (depth > 10) return;
+
+  try {
+    // 1. Force all seekbar elements to be clickable and remove the "disabled" look
+    const seekbarElements = win.document.querySelectorAll('[class*="seekbar"], [class*=" Seekbar"], [class*="track"], [class*="scrubber"], [class*="Thumb"]');
+    seekbarElements.forEach(el => {
+      el.style.pointerEvents = 'auto';
+      el.style.opacity = '1';
+      el.style.filter = 'none';
+      el.removeAttribute('disabled');
+      el.classList.remove('disabled', 'cs-button-disabled', 'state-disabled');
+    });
+
+    // 2. Remove transparent overlays blocking clicks
+    const overlays = win.document.querySelectorAll('[class*="overlay"], [class*="blocker"]');
+    overlays.forEach(el => {
+      if (getComputedStyle(el).position === 'absolute' && getComputedStyle(el).cursor === 'default') {
+         el.style.pointerEvents = 'none';
+      }
+    });
+
+    // 3. NEW: bind arrow-key seeking + "n" for next slide (once per frame)
+    bindKeyboardControls(win);
+
+  } catch (e) {}
+
+  try {
+    const len = win.frames.length;
+    for (let i = 0; i < len; i++) {
+      try {
+        unlockSeekbar(win.frames[i], depth + 1);
+      } catch (e) {}
+    }
+  } catch (e) {}
+}
+
+function bindKeyboardControls(win) {
+  if (win.__seekKeysBound) return; // avoid double-binding on re-run
+
+  const track = win.document.querySelector('[class*="track"]');
+  const thumb = win.document.querySelector('[class*="Thumb"], [class*="thumb"]');
+  if (!track || !thumb) return; // no seekbar in this frame
+
+  win.__seekKeysBound = true;
+
+  const STEP_PERCENT   = 0.03; // how far each arrow press moves the thumb (3% of track width)
+  const END_BUFFER_SEC = 1;    // stop this many seconds short of the very end
+
+  function getDurationSeconds() {
+    const max = parseFloat(thumb.getAttribute('aria-valuemax'));
+    if (!isNaN(max) && max > 1) return max;
+
+    // Fallback: look for a "0:05 / 1:30" style time display
+    const timeEl = [...win.document.querySelectorAll('*')].find(el =>
+      el.children.length === 0 && /\d+:\d+\s*\/\s*\d+:\d+/.test(el.textContent)
+    );
+    if (timeEl) {
+      const p = timeEl.textContent.match(/(\d+):(\d+)\s*\/\s*(\d+):(\d+)/);
+      if (p) return (+p[3]) * 60 + (+p[4]);
+    }
+    return null; // unknown — buffer falls back to a flat percentage
+  }
+
+  function getCurrentPercent() {
+    const trackRect = track.getBoundingClientRect();
+    const thumbRect = thumb.getBoundingClientRect();
+    const cx = thumbRect.left + thumbRect.width / 2;
+    return Math.min(1, Math.max(0, (cx - trackRect.left) / trackRect.width));
+  }
+
+  function seekToPercent(percent) {
+    const trackRect = track.getBoundingClientRect();
+    const targetX = trackRect.left + trackRect.width * percent;
+    const y = trackRect.top + trackRect.height / 2;
+    const startRect = thumb.getBoundingClientRect();
+    const startX = startRect.left + startRect.width / 2;
+
+    const opts = { bubbles: true, cancelable: true, view: win };
+    thumb.dispatchEvent(new MouseEvent('mousedown', { ...opts, clientX: startX, clientY: y }));
+    win.document.dispatchEvent(new MouseEvent('mousemove', { ...opts, clientX: targetX, clientY: y }));
+    win.document.dispatchEvent(new MouseEvent('mouseup', { ...opts, clientX: targetX, clientY: y }));
+  }
+
+  function findNextButton() {
+    return win.document.querySelector(
+      '[class*="next" i]:not([class*="text" i]), [aria-label*="next" i], [title*="next" i]'
+    );
+  }
+
+  win.document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const duration = getDurationSeconds();
+      const bufferPercent = duration ? END_BUFFER_SEC / duration : 0.02;
+      const maxPercent = 1 - bufferPercent;
+
+      let percent = getCurrentPercent();
+      percent = e.key === 'ArrowRight'
+        ? Math.min(maxPercent, percent + STEP_PERCENT)
+        : Math.max(0, percent - STEP_PERCENT);
+
+      seekToPercent(percent);
+    }
+
+    if (e.key.toLowerCase() === 'n') {
+      const nextBtn = findNextButton();
+      if (nextBtn) nextBtn.click();
+    }
+  });
+}
+
+unlockSeekbar();
+console.log('Seekbar unlock + keyboard controls complete. Arrow keys seek, "n" jumps to next slide.');
+
+
+
