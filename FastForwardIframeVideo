@@ -58,7 +58,6 @@ console.log('Seekbar unlock attempt complete. Try clicking and dragging the time
 
 
 ------------------
-
 function unlockSeekbar(win = window, depth = 0) {
   if (depth > 10) return;
 
@@ -173,6 +172,132 @@ function bindKeyboardControls(win) {
 
 unlockSeekbar();
 console.log('Seekbar unlock + keyboard controls complete. Arrow keys seek, "n" jumps to next slide.');
+
+
+
+
+
+
+-----------------
+
+function unlockSeekbar(win = window, depth = 0) {
+  if (depth > 10) return;
+
+  try {
+    const seekbarElements = win.document.querySelectorAll('[class*="seekbar"], [class*=" Seekbar"], [class*="track"], [class*="scrubber"], [class*="Thumb"]');
+    seekbarElements.forEach(el => {
+      el.style.pointerEvents = 'auto';
+      el.style.opacity = '1';
+      el.style.filter = 'none';
+      el.removeAttribute('disabled');
+      el.classList.remove('disabled', 'cs-button-disabled', 'state-disabled');
+    });
+
+    const overlays = win.document.querySelectorAll('[class*="overlay"], [class*="blocker"]');
+    overlays.forEach(el => {
+      if (getComputedStyle(el).position === 'absolute' && getComputedStyle(el).cursor === 'default') {
+         el.style.pointerEvents = 'none';
+      }
+    });
+
+    bindKeyboardControls(win);
+
+  } catch (e) {}
+
+  try {
+    const len = win.frames.length;
+    for (let i = 0; i < len; i++) {
+      try {
+        unlockSeekbar(win.frames[i], depth + 1);
+      } catch (e) {}
+    }
+  } catch (e) {}
+}
+
+function bindKeyboardControls(win) {
+  if (win.__seekKeysBound) return;
+
+  const track = win.document.querySelector('[class*="track"]');
+  const thumb = win.document.querySelector('[class*="Thumb"], [class*="thumb"]');
+  if (!track || !thumb) return;
+
+  win.__seekKeysBound = true;
+  console.log('[seek] bound to frame:', win.location.href);
+
+  const END_BUFFER_SEC = 1;
+
+  function getDurationSeconds() {
+    const max = parseFloat(thumb.getAttribute('aria-valuemax'));
+    if (!isNaN(max) && max > 1) return max;
+    const timeEl = [...win.document.querySelectorAll('*')].find(el =>
+      el.children.length === 0 && /\d+:\d+\s*\/\s*\d+:\d+/.test(el.textContent)
+    );
+    if (timeEl) {
+      const p = timeEl.textContent.match(/(\d+):(\d+)\s*\/\s*(\d+):(\d+)/);
+      if (p) return (+p[3]) * 60 + (+p[4]);
+    }
+    return null;
+  }
+
+  // Fires a full pointer+mouse sequence so it works whichever event model the player uses
+  function firePointerSequence(el, type, x, y, opts = {}) {
+    const base = {
+      bubbles: true, cancelable: true, composed: true, view: win,
+      clientX: x, clientY: y, button: 0, buttons: type === 'up' ? 0 : 1,
+      pointerId: 1, isPrimary: true, pointerType: 'mouse', ...opts
+    };
+    el.dispatchEvent(new PointerEvent('pointer' + type, base));
+    el.dispatchEvent(new MouseEvent('mouse' + type, base));
+  }
+
+  function seekToPercent(percent) {
+    const trackRect = track.getBoundingClientRect();
+    const targetX = trackRect.left + trackRect.width * percent;
+    const y = trackRect.top + trackRect.height / 2;
+    const startRect = thumb.getBoundingClientRect();
+    const startX = startRect.left + startRect.width / 2;
+
+    firePointerSequence(thumb, 'down', startX, y);
+    // a couple of intermediate moves — some drag handlers need >1 move event to register
+    firePointerSequence(win.document, 'move', (startX + targetX) / 2, y);
+    firePointerSequence(win.document, 'move', targetX, y);
+    firePointerSequence(win.document, 'up', targetX, y);
+  }
+
+  function seekToEnd() {
+    const duration = getDurationSeconds();
+    const bufferPercent = duration ? END_BUFFER_SEC / duration : 0.02;
+    seekToPercent(1 - bufferPercent);
+  }
+
+  function findNextButton() {
+    return win.document.querySelector(
+      '[class*="next" i]:not([class*="text" i]), [aria-label*="next" i], [title*="next" i]'
+    );
+  }
+
+  function clickNext() {
+    const btn = findNextButton();
+    if (!btn) { console.log('[seek] next button not found'); return; }
+    const r = btn.getBoundingClientRect();
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    firePointerSequence(btn, 'down', x, y);
+    firePointerSequence(btn, 'up', x, y);
+    btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: win, clientX: x, clientY: y }));
+  }
+
+  // Bind on document AND window, capture phase, to maximize chance of catching the event
+  [win.document, win].forEach(target => {
+    target.addEventListener('keydown', (e) => {
+      console.log('[seek] key:', e.key); // debug — remove once confirmed working
+      if (e.key === 'ArrowRight') { e.preventDefault(); seekToEnd(); }
+      if (e.key.toLowerCase() === 'n') { e.preventDefault(); clickNext(); }
+    }, true);
+  });
+}
+
+unlockSeekbar();
+console.log('Seekbar unlock + keyboard controls complete.');
 
 
 
