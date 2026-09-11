@@ -1,0 +1,181 @@
+#!/bin/bash
+
+NODE1_PUBLIC="10.57.5.143"
+NODE2_PUBLIC="10.57.5.144"
+
+NODE1_PRIVATE="172.0.12.109"
+NODE2_PRIVATE="172.0.12.110"
+
+NODE1_BACKHAUL="198.18.4.33"
+NODE2_BACKHAUL="198.18.4.34"
+
+SCAN1="10.57.5.147"
+SCAN2="10.57.5.148"
+SCAN3="10.57.5.149"
+
+
+test_ping()
+{
+    SRC=$1
+    DST=$2
+    DESC=$3
+
+    printf "%-55s : " "$DESC"
+
+    if ping -I "$SRC" -c 3 -W 2 "$DST" >/dev/null 2>&1
+    then
+        echo "PASS"
+    else
+        echo "FAIL"
+    fi
+}
+
+
+echo
+echo "============================================================"
+echo " Oracle RAC Network Connectivity Precheck"
+echo "============================================================"
+echo "Hostname : $(hostname -f)"
+echo "Date     : $(date)"
+echo "============================================================"
+
+
+# ============================================================
+# Determine current node
+# ============================================================
+
+LOCAL_IPS=$(ip -4 addr | awk '/inet / {print $2}' | cut -d/ -f1)
+
+if echo "$LOCAL_IPS" | grep -q "$NODE1_PUBLIC"
+then
+
+    echo
+    echo "Current Node : NODE1"
+    echo
+
+    LOCAL_PUBLIC="$NODE1_PUBLIC"
+    REMOTE_PUBLIC="$NODE2_PUBLIC"
+
+    LOCAL_PRIVATE="$NODE1_PRIVATE"
+    REMOTE_PRIVATE="$NODE2_PRIVATE"
+
+    LOCAL_BACKHAUL="$NODE1_BACKHAUL"
+    REMOTE_BACKHAUL="$NODE2_BACKHAUL"
+
+elif echo "$LOCAL_IPS" | grep -q "$NODE2_PUBLIC"
+then
+
+    echo
+    echo "Current Node : NODE2"
+    echo
+
+    LOCAL_PUBLIC="$NODE2_PUBLIC"
+    REMOTE_PUBLIC="$NODE1_PUBLIC"
+
+    LOCAL_PRIVATE="$NODE2_PRIVATE"
+    REMOTE_PRIVATE="$NODE1_PRIVATE"
+
+    LOCAL_BACKHAUL="$NODE2_BACKHAUL"
+    REMOTE_BACKHAUL="$NODE1_BACKHAUL"
+
+else
+
+    echo
+    echo "ERROR: Could not identify RAC node."
+    echo "Check local IP configuration."
+    exit 1
+
+fi
+
+
+# ============================================================
+# PUBLIC NETWORK
+# ============================================================
+
+echo
+echo "============================================================"
+echo " PUBLIC NETWORK"
+echo "============================================================"
+
+test_ping "$LOCAL_PUBLIC" "$REMOTE_PUBLIC" \
+"Public interface connectivity"
+
+
+# ============================================================
+# PRIVATE RAC INTERCONNECT
+# ============================================================
+
+echo
+echo "============================================================"
+echo " PRIVATE RAC INTERCONNECT"
+echo "============================================================"
+
+test_ping "$LOCAL_PRIVATE" "$REMOTE_PRIVATE" \
+"Private interface connectivity"
+
+
+# ============================================================
+# BACKHAUL NETWORK
+# ============================================================
+
+echo
+echo "============================================================"
+echo " BACKHAUL NETWORK"
+echo "============================================================"
+
+test_ping "$LOCAL_BACKHAUL" "$REMOTE_BACKHAUL" \
+"Backhaul interface connectivity"
+
+
+# ============================================================
+# SCAN
+# ============================================================
+
+echo
+echo "============================================================"
+echo " SCAN CONNECTIVITY"
+echo "============================================================"
+
+test_ping "$LOCAL_PUBLIC" "$SCAN1" "SCAN1 connectivity"
+test_ping "$LOCAL_PUBLIC" "$SCAN2" "SCAN2 connectivity"
+test_ping "$LOCAL_PUBLIC" "$SCAN3" "SCAN3 connectivity"
+
+
+# ============================================================
+# ROUTE VERIFICATION
+# ============================================================
+
+echo
+echo "============================================================"
+echo " ROUTE VERIFICATION"
+echo "============================================================"
+
+echo
+echo "Public:"
+ip route get "$REMOTE_PUBLIC"
+
+echo
+echo "Private:"
+ip route get "$REMOTE_PRIVATE"
+
+echo
+echo "Backhaul:"
+ip route get "$REMOTE_BACKHAUL"
+
+
+# ============================================================
+# INTERFACE INFORMATION
+# ============================================================
+
+echo
+echo "============================================================"
+echo " NETWORK INTERFACES"
+echo "============================================================"
+
+ip -br addr
+
+
+echo
+echo "============================================================"
+echo " TEST COMPLETED"
+echo "============================================================"
