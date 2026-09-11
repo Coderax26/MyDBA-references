@@ -178,4 +178,145 @@ ip -br addr
 echo
 echo "============================================================"
 echo " TEST COMPLETED"
-echo "============================================================"
+echo "===========================================================
+="
+
+
+
+
+
+--------------------------
+#!/bin/bash
+
+NODE1_PUBLIC="10.57.5.143"
+NODE2_PUBLIC="10.57.5.144"
+
+NODE1_PRIVATE="172.0.12.109"
+NODE2_PRIVATE="172.0.12.110"
+
+NODE1_BACKHAUL="198.18.4.33"
+NODE2_BACKHAUL="198.18.4.34"
+
+SCAN1="10.57.5.147"
+SCAN2="10.57.5.148"
+SCAN3="10.57.5.149"
+
+
+echo
+echo "=========================================================================="
+echo " Oracle RAC Network Connectivity Test"
+echo " Host : $(hostname -f)"
+echo " Date : $(date)"
+echo "=========================================================================="
+
+printf "%-18s %-18s %-10s %-10s %-15s %-15s\n" \
+"SOURCE IP" "DESTINATION IP" "SENT" "LOSS" "AVG LATENCY" "STATUS"
+
+echo "--------------------------------------------------------------------------"
+
+
+test_ping()
+{
+    SRC=$1
+    DST=$2
+
+    RESULT=$(ping -I "$SRC" -c 3 -W 2 "$DST" 2>&1)
+
+    SENT=$(echo "$RESULT" | awk -F',' '/packets transmitted/ {gsub(/[^0-9]/,"",$1); print $1}')
+    
+    LOSS=$(echo "$RESULT" | grep -oP '[0-9]+(?=% packet loss)' | head -1)
+
+    AVG=$(echo "$RESULT" | awk -F'=' '/rtt|round-trip/ {
+        gsub(/^[ \t]+|[ \t]+$/, "", $2);
+        split($2,a,"/");
+        print a[2]
+    }')
+
+    if [ -z "$LOSS" ]; then
+        LOSS="100"
+    fi
+
+    if [ "$LOSS" = "0" ]; then
+        STATUS="REACHABLE"
+    elif [ "$LOSS" -lt 100 ]; then
+        STATUS="PARTIAL"
+    else
+        STATUS="UNREACHABLE"
+    fi
+
+    if [ -z "$AVG" ]; then
+        AVG="N/A"
+    else
+        AVG="${AVG} ms"
+    fi
+
+    printf "%-18s %-18s %-10s %-10s %-15s %-15s\n" \
+    "$SRC" "$DST" "${SENT:-3}" "${LOSS}%" "$AVG" "$STATUS"
+}
+
+
+# ==========================================================================
+# PUBLIC NETWORK
+# ==========================================================================
+
+test_ping "$NODE1_PUBLIC" "$NODE2_PUBLIC"
+test_ping "$NODE2_PUBLIC" "$NODE1_PUBLIC"
+
+
+# ==========================================================================
+# PRIVATE RAC INTERCONNECT
+# ==========================================================================
+
+test_ping "$NODE1_PRIVATE" "$NODE2_PRIVATE"
+test_ping "$NODE2_PRIVATE" "$NODE1_PRIVATE"
+
+
+# ==========================================================================
+# BACKHAUL NETWORK
+# ==========================================================================
+
+test_ping "$NODE1_BACKHAUL" "$NODE2_BACKHAUL"
+test_ping "$NODE2_BACKHAUL" "$NODE1_BACKHAUL"
+
+
+# ==========================================================================
+# SCAN CONNECTIVITY
+# ==========================================================================
+
+test_ping "$NODE1_PUBLIC" "$SCAN1"
+test_ping "$NODE1_PUBLIC" "$SCAN2"
+test_ping "$NODE1_PUBLIC" "$SCAN3"
+
+test_ping "$NODE2_PUBLIC" "$SCAN1"
+test_ping "$NODE2_PUBLIC" "$SCAN2"
+test_ping "$NODE2_PUBLIC" "$SCAN3"
+
+
+echo
+echo "=========================================================================="
+echo " ROUTE USED FOR EACH NETWORK"
+echo "=========================================================================="
+
+echo
+echo "Node1 Public -> Node2 Public"
+ip route get "$NODE2_PUBLIC" from "$NODE1_PUBLIC"
+
+echo
+echo "Node1 Private -> Node2 Private"
+ip route get "$NODE2_PRIVATE" from "$NODE1_PRIVATE"
+
+echo
+echo "Node1 Backhaul -> Node2 Backhaul"
+ip route get "$NODE2_BACKHAUL" from "$NODE1_BACKHAUL"
+
+echo
+echo "=========================================================================="
+echo " NETWORK INTERFACES"
+echo "=========================================================================="
+
+ip -br addr
+
+echo
+echo "=========================================================================="
+echo " TEST COMPLETED"
+echo "=========================================================================="
