@@ -1,0 +1,26 @@
+SELECT 
+    b.inst_id         AS blocker_inst_id,
+    b.sid             AS blocker_sid,
+    b.serial#         AS blocker_serial,
+    b.username        AS blocker_username,
+    b.status          AS blocker_status,
+    b.sql_id          AS current_sql_id,
+    b.prev_sql_id     AS prev_sql_id,
+    NVL(b.sql_id, b.prev_sql_id) AS relevant_sql_id,
+    b.event           AS blocker_wait_event,
+    b.seconds_in_wait AS seconds_in_wait,
+    b.machine,
+    b.program
+FROM gv$session b
+WHERE (b.inst_id, b.sid) IN (
+    -- Sessions that are blocking others
+    SELECT blocking_instance, blocking_session 
+    FROM gv$session 
+    WHERE blocking_session IS NOT NULL
+)
+AND (b.inst_id, b.sid) NOT IN (
+    -- Exclude sessions that are themselves blocked by someone else
+    SELECT inst_id, sid 
+    FROM gv$session 
+    WHERE blocking_session IS NOT NULL
+);
