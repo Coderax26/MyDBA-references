@@ -1,0 +1,315 @@
+Oracle 4 Node RAC ASM Disk Addition Runbook
+
+Step by step procedure for preparing 10 shared disks using fdisk
+partitioning and adding the partitions to ASM through the existing ASM
+management UI.
+
+Assumption: Grid Infrastructure and RDBMS software are already installed
+on a 4 node RAC. The new disks are shared between all four nodes and the
+existing environment uses partitioned disks for ASM.
+
+IMPORTANT: Do not execute destructive commands until disk identity,
+size, serial number, and shared storage presentation have been verified
+on all four nodes.
+
+1.  OVERALL PROCEDURE
+
+2.  Identify the 10 new disks Purpose: Confirm disk identity before
+    modifying anything.
+
+3.  Check existing partitions and signatures Purpose: Ensure the disks
+    are not already in use.
+
+4.  Verify shared visibility on all 4 nodes Purpose: RAC ASM requires
+    all nodes to see the same shared LUNs.
+
+5.  Partition disks with fdisk Purpose: Create one partition covering
+    each disk.
+
+6.  Refresh kernel partition information Purpose: Ensure Linux
+    recognizes the new partitions.
+
+7.  Verify partitions on all 4 nodes Purpose: Confirm consistent shared
+    storage visibility.
+
+8.  Check ASM disk discovery Purpose: Confirm ASM sees the new
+    partitions as candidates.
+
+9.  Add disks using the existing ASM UI Purpose: Add the correct
+    partition paths to the intended disk group.
+
+10. Verify ASM membership and capacity Purpose: Confirm the disks became
+    ASM members.
+
+11. Validate from all 4 RAC nodes Purpose: Confirm the disk group is
+    visible cluster wide.
+
+12. PRECHECKS
+
+2.1 Identify the disks
+
+Run on Node 1:
+
+lsblk -o NAME,KNAME,TYPE,SIZE,FSTYPE,MOUNTPOINTS,MODEL,SERIAL
+
+Why: This identifies the candidate disks and provides size, filesystem,
+model, and serial information. Do not rely only on /dev/sdX names
+because device numbering is not a reliable storage identity.
+
+2.2 Check existing partitions
+
+For each candidate disk:
+
+fdisk -l /dev/sdb fdisk -l /dev/sdc fdisk -l /dev/sdd
+
+Why: This confirms whether the disks already contain partitions. If a
+disk already has a partition or appears to contain data, stop and
+investigate before modifying it.
+
+2.3 Check existing signatures without changing anything
+
+Run for each candidate disk:
+
+wipefs -n /dev/sdb wipefs -n /dev/sdc wipefs -n /dev/sdd
+
+Why: The -n option performs a read only check. It can reveal filesystem,
+LVM, ASM, or other signatures. Do not use wipefs without -n on uncertain
+disks.
+
+2.4 Verify all 4 RAC nodes see the shared disks
+
+Run on Node 1, Node 2, Node 3, and Node 4:
+
+lsblk -o NAME,KNAME,TYPE,SIZE,FSTYPE,MOUNTPOINTS,MODEL,SERIAL
+
+Why: ASM disk groups in RAC require shared storage. The same physical
+LUN must be visible to all four nodes. If one node cannot see a disk,
+resolve the storage presentation issue before adding it to ASM.
+
+3.  PARTITION THE DISKS USING FDISK
+
+Example for the first disk:
+
+fdisk /dev/sdb
+
+Inside fdisk, create one primary partition using the complete disk:
+
+n p 1 Enter Enter w
+
+After this, the disk should appear as:
+
+/dev/sdb └─ /dev/sdb1
+
+Why: The partition provides a defined storage boundary that can be
+presented to ASM. This follows the partition based ASM preparation
+method used in the existing environment.
+
+3.1 Repeat for all 10 disks
+
+Use the actual device names identified during the precheck.
+
+Example:
+
+fdisk /dev/sdb fdisk /dev/sdc fdisk /dev/sdd fdisk /dev/sde fdisk
+/dev/sdf fdisk /dev/sdg fdisk /dev/sdh fdisk /dev/sdi fdisk /dev/sdj
+fdisk /dev/sdk
+
+For each disk, create partition 1 using the complete disk.
+
+Do not assume these are the correct disks without checking them first.
+
+4.  VERIFY PARTITION CREATION
+
+lsblk
+
+Expected pattern:
+
+sdb 500G └─sdb1 500G
+
+sdc 500G └─sdc1 500G
+
+Why: This confirms that the partition table was written and Linux can
+see the new partition.
+
+5.  REFRESH THE KERNEL PARTITION TABLE
+
+Usually fdisk causes the kernel to recognize the partition immediately.
+
+If the new partition does not appear:
+
+partprobe /dev/sdb
+
+Then:
+
+lsblk
+
+Why: partprobe asks the running kernel to reread the partition table
+without requiring a reboot.
+
+6.  VERIFY THE SHARED PARTITIONS ON ALL 4 NODES
+
+Run on all nodes:
+
+lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS,MODEL,SERIAL
+
+Each node should show the corresponding partition, for example
+/dev/sdb1, /dev/sdc1, and so on.
+
+Why: Because the LUNs are shared, the partition created on the shared
+disk should become visible from all RAC nodes. Do not independently
+create different partitions on each node for the same shared LUN.
+
+7.  CHECK ASM DISCOVERY
+
+Switch to the Grid owner:
+
+su - grid
+
+Connect to ASM:
+
+sqlplus / as sysasm
+
+Check ASM disk discovery:
+
+show parameter asm_diskstring;
+
+Then:
+
+select path, header_status, mode_status, state, total_mb from v$asm_disk
+order by path;
+
+Why: ASM_DISKSTRING controls where ASM looks for disks. The new
+partition paths must be discoverable by ASM before they can be added to
+a disk group.
+
+8.  CHECK HEADER_STATUS BEFORE ADDING
+
+For new disks, you normally expect CANDIDATE or, depending on the
+environment, PROVISIONED or FORMER.
+
+HEADER_STATUS meanings:
+
+CANDIDATE Available for ASM. Normally suitable for adding.
+
+PROVISIONED Prepared for ASM. Verify environment and intended disk
+group.
+
+MEMBER Already belongs to an ASM disk group. Do not add elsewhere.
+
+FORMER Previously belonged to an ASM disk group. Verify it is safe to
+reuse.
+
+FOREIGN Contains non ASM metadata. Stop and investigate.
+
+UNKNOWN ASM cannot determine the disk state. Investigate before
+proceeding.
+
+9.  ADD THE PARTITIONS THROUGH THE EXISTING ASM UI
+
+Open the same ASM management UI used previously.
+
+Select the intended ASM disk group and add the newly discovered
+partition devices.
+
+IMPORTANT: Select the partition devices, for example /dev/sdb1, not the
+parent disks such as /dev/sdb, when the existing setup is partition
+based.
+
+Conceptually, the ASM operation performed by the UI is similar to:
+
+ALTER DISKGROUP DATA ADD DISK ‘/dev/sdb1’, ‘/dev/sdc1’, ‘/dev/sdd1’;
+
+Do not execute the example SQL blindly. Use the actual ASM disk group
+and actual discovered paths from your environment.
+
+10. VERIFY ASM AFTER ADDITION
+
+asmcmd lsdg
+
+Then:
+
+select name, state, type, total_mb, free_mb, usable_file_mb from
+v$asm_diskgroup;
+
+And verify individual disks:
+
+select group_number, disk_number, name, path, header_status, state,
+total_mb from v$asm_disk order by group_number, disk_number;
+
+Expected: The newly added disks should show HEADER_STATUS as MEMBER and
+should belong to the intended disk group.
+
+11. FINAL RAC VALIDATION
+
+From each RAC node, check:
+
+asmcmd lsdg
+
+From ASM SQL, validate all instances:
+
+select inst_id, name, state, type, total_mb, free_mb from
+gv$asm_diskgroup order by inst_id, name;
+
+Why: The disk group must be visible consistently through all four ASM
+instances. This confirms that the RAC cluster has a consistent view of
+the shared storage.
+
+12. FINAL VALIDATION CHECKLIST
+
+[ ] All 10 disks identified using size and persistent storage
+information.
+
+[ ] No existing filesystem, LVM, or unexpected ASM signature found.
+
+[ ] All 10 shared disks visible from Node 1, Node 2, Node 3, and Node 4.
+
+[ ] One partition created on each disk using fdisk.
+
+[ ] Partitions visible as /dev/sdX1 on all nodes.
+
+[ ] ASM_DISKSTRING allows ASM to discover the partition paths.
+
+[ ] New disks show an appropriate HEADER_STATUS before addition.
+
+[ ] Correct partition paths selected in the ASM management UI.
+
+[ ] New disks show HEADER_STATUS = MEMBER after addition.
+
+[ ] ASM disk group capacity increased as expected.
+
+[ ] ASM disk group is visible from all four RAC nodes.
+
+13. USEFUL COMMAND REFERENCE
+
+Disk inventory:
+
+lsblk -o NAME,KNAME,TYPE,SIZE,FSTYPE,MOUNTPOINTS,MODEL,SERIAL
+
+Partition details:
+
+fdisk -l /dev/sdX
+
+Read only signature check:
+
+wipefs -n /dev/sdX
+
+Refresh partition table:
+
+partprobe /dev/sdX
+
+ASM disk discovery:
+
+select path, header_status, mode_status, state, total_mb from v$asm_disk
+order by path;
+
+ASM disk groups:
+
+select name, state, type, total_mb, free_mb, usable_file_mb from
+v$asm_diskgroup;
+
+OPERATIONAL CAUTION
+
+The most dangerous steps are disk identification and commands that write
+or remove storage metadata. Always validate the actual device, serial
+number, size, and shared storage mapping before running fdisk or any
+disk initialization command.
