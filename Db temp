@@ -24,3 +24,26 @@ AND (b.inst_id, b.sid) NOT IN (
     FROM gv$session 
     WHERE blocking_session IS NOT NULL
 );
+
+
+
+
+
+
+
+
+
+
+SELECT type, COUNT(DISTINCT group#) grps, COUNT(*) members
+FROM v$logfile GROUP BY type;
+
+SELECT 'ONLINE' t, thread#, COUNT(*) grps, MIN(group#) lo, MAX(group#) hi,
+       MIN(bytes)/1048576 min_mb, MAX(bytes)/1048576 max_mb
+FROM v$log GROUP BY thread#
+UNION ALL
+SELECT 'STANDBY', thread#, COUNT(*), MIN(group#), MAX(group#),
+       MIN(bytes)/1048576, MAX(bytes)/1048576
+FROM v$standby_log GROUP BY thread#;
+
+SELECT type, records_total, records_used
+FROM v$controlfile_record_section WHERE type='REDO LOG';
