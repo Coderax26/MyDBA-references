@@ -1,0 +1,141 @@
+-- =====================================================================
+-- CMSDBPR (new PROD)  ->  align redo / standby redo layout with DR
+-- Target layout (copied from DR screenshots):
+--   ONLINE  : T1 g1-10 | T2 g11-20 | T3 g45-54 | T4 g55-64   (10 per thread, 4096M, 2 members)
+--   STANDBY : T1 g21-32 | T2 g33-44 | T3 g65-76 | T4 g77-88  (12 per thread, 4096M, 2 members)
+-- Members: +DATAC1 and +RECOC1, path must be .../CMSDBPR/ONLINELOG/
+-- RUN ON PRODUCTION ONLY. Review every step; do not paste blindly.
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- STEP 0: PRE-CHECKS (read-only, run on PROD and DR, compare)
+-- ---------------------------------------------------------------------
+SET LINES 200 PAGES 200
+COL member FORMAT A75
+COL value FORMAT A60
+
+SELECT db_unique_name, database_role, open_mode, protection_mode FROM v$database;
+SHOW PARAMETER db_unique_name
+SHOW PARAMETER db_create_online_log_dest
+SHOW PARAMETER standby_file_management
+SELECT inst_id, instance_name, thread#, status FROM gv$instance ORDER BY inst_id;
+SELECT thread#, status, enabled, groups, instance FROM v$thread ORDER BY thread#;
+SELECT process, status, thread#, sequence# FROM gv$managed_standby
+ WHERE process IN ('MRP0','RFS') ORDER BY process;
+
+-- db_unique_name MUST be CMSDBPR, otherwise new files land in the wrong directory again.
+-- All standby groups to be dropped must be UNASSIGNED (not ACTIVE):
+SELECT group#, thread#, status, bytes/1048576 mb, blocksize FROM v$standby_log ORDER BY group#;
+SELECT group#, thread#, status, bytes/1048576 mb, blocksize FROM v$log ORDER BY group#;
+
+-- Save current layout (rollback reference)
+SELECT group#, type, status, member FROM v$logfile ORDER BY type, group#, member;
+
+-- ---------------------------------------------------------------------
+-- STEP 1: PAUSE SYNC (choose what matches your topology)
+-- ---------------------------------------------------------------------
+-- On OLD primary (broker):   EDIT DATABASE '<prod_standby>' SET STATE='TRANSPORT-OFF';
+-- or without broker:         ALTER SYSTEM SET log_archive_dest_state_<n>=DEFER SID='*';
+-- On PROD (broker):          EDIT DATABASE 'CMSDBPR' SET STATE='APPLY-OFF';
+-- or without broker:
+ALTER DATABASE RECOVER MANAGED STANDBY DATABASE CANCEL;
+
+-- Confirm no RFS/MRP activity and all SRLs UNASSIGNED before continuing:
+SELECT process, status FROM gv$managed_standby WHERE process IN ('MRP0','RFS');
+SELECT status, COUNT(*) FROM v$standby_log GROUP BY status;
+
+ALTER SYSTEM SET standby_file_management=MANUAL SCOPE=MEMORY SID='*';
+
+-- ---------------------------------------------------------------------
+-- STEP 2: FIX WRONG-PATH SRLs (groups 21-44, threads 1 and 2)
+-- OMF cannot rename members, so drop and re-add with the same group numbers.
+-- ---------------------------------------------------------------------
+WHENEVER SQLERROR EXIT FAILURE
+
+BEGIN
+  FOR g IN 21..44 LOOP
+    EXECUTE IMMEDIATE 'ALTER DATABASE DROP STANDBY LOGFILE GROUP '||g;
+  END LOOP;
+END;
+/
+
+BEGIN
+  FOR g IN 21..44 LOOP
+    EXECUTE IMMEDIATE 'ALTER DATABASE ADD STANDBY LOGFILE THREAD '
+      || CASE WHEN g <= 32 THEN 1 ELSE 2 END
+      || ' GROUP '||g||' (''+DATAC1'',''+RECOC1'') SIZE 4096M';
+  END LOOP;
+END;
+/
+
+-- ---------------------------------------------------------------------
+-- STEP 3: ADD ONLINE REDO FOR THREADS 3 AND 4 (groups 45-64)
+-- ---------------------------------------------------------------------
+BEGIN
+  FOR g IN 45..64 LOOP
+    EXECUTE IMMEDIATE 'ALTER DATABASE ADD LOGFILE THREAD '
+      || CASE WHEN g <= 54 THEN 3 ELSE 4 END
+      || ' GROUP '||g||' (''+DATAC1'',''+RECOC1'') SIZE 4096M';
+  END LOOP;
+END;
+/
+
+-- ---------------------------------------------------------------------
+-- STEP 4: ADD SRLs FOR THREADS 3 AND 4 (groups 65-88)
+-- ---------------------------------------------------------------------
+BEGIN
+  FOR g IN 65..88 LOOP
+    EXECUTE IMMEDIATE 'ALTER DATABASE ADD STANDBY LOGFILE THREAD '
+      || CASE WHEN g <= 76 THEN 3 ELSE 4 END
+      || ' GROUP '||g||' (''+DATAC1'',''+RECOC1'') SIZE 4096M';
+  END LOOP;
+END;
+/
+
+WHENEVER SQLERROR CONTINUE
+
+-- ---------------------------------------------------------------------
+-- STEP 5: VERIFY (expect identical to DR)
+-- ---------------------------------------------------------------------
+SELECT type, COUNT(DISTINCT group#) grps, COUNT(*) members FROM v$logfile GROUP BY type;
+-- expect ONLINE 40/80, STANDBY 48/96
+
+SELECT 'ONLINE' t, thread#, COUNT(*) grps, MIN(group#) lo, MAX(group#) hi,
+       MIN(bytes)/1048576 min_mb, MAX(bytes)/1048576 max_mb
+  FROM v$log GROUP BY thread#
+UNION ALL
+SELECT 'STANDBY', thread#, COUNT(*), MIN(group#), MAX(group#),
+       MIN(bytes)/1048576, MAX(bytes)/1048576
+  FROM v$standby_log GROUP BY thread#
+ORDER BY 1, 2;
+
+-- Must return 0 rows (no member outside the CMSDBPR directory):
+SELECT group#, type, member FROM v$logfile WHERE member NOT LIKE '%/CMSDBPR/%';
+
+-- Every group must have exactly 2 members:
+SELECT group#, COUNT(*) FROM v$logfile GROUP BY group# HAVING COUNT(*) <> 2;
+
+-- Compare thread state with DR (do NOT enable threads 3/4 on a standby):
+SELECT thread#, status, enabled, groups FROM v$thread ORDER BY thread#;
+
+SELECT type, records_total, records_used FROM v$controlfile_record_section WHERE type='REDO LOG';
+
+-- ---------------------------------------------------------------------
+-- STEP 6: RESUME
+-- ---------------------------------------------------------------------
+ALTER SYSTEM SET standby_file_management=AUTO SCOPE=MEMORY SID='*';
+-- (match the SPFILE value if it was persisted: check SHOW PARAMETER first)
+
+ALTER DATABASE RECOVER MANAGED STANDBY DATABASE USING CURRENT LOGFILE DISCONNECT FROM SESSION;
+-- or broker: EDIT DATABASE 'CMSDBPR' SET STATE='APPLY-ON';
+-- On OLD primary: re-enable transport (TRANSPORT-ON, or log_archive_dest_state_<n>=ENABLE)
+
+-- Then confirm RFS receiving into the new SRLs and MRP applying:
+SELECT process, status, thread#, sequence# FROM gv$managed_standby WHERE process IN ('MRP0','RFS');
+SELECT group#, thread#, sequence#, status FROM v$standby_log WHERE status <> 'UNASSIGNED';
+
+-- ---------------------------------------------------------------------
+-- ROLLBACK: only SRL/online log files change (no datafiles). To revert,
+-- re-add the groups from the saved v$logfile listing with the same
+-- group numbers and thread numbers.
+-- ---------------------------------------------------------------------
